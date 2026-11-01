@@ -103,6 +103,15 @@
         }
         #markerLabels > .marker-red { color: #ff3b30; }
         #markerLabels > .marker-yellow { color: var(--accent); }
+        #last-update {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+        #last-update.stale {
+            color: #ff3b30;
+        }
         #myPercent {
             color: var(--accent);
             font-weight: bold;
@@ -174,6 +183,7 @@
   <body>
     <div class="container">
         <h1>Li Time Battery Status</h1>
+        <div id="last-update">Last update: waiting for data…</div>
         
         <div id="battery-connect-container" class="container" style="padding-bottom: 20px">
             <button id="battery-connect" class="btn btn-primary">Connect</button>
@@ -223,6 +233,7 @@
             </div>
             <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
             <button id="battery-reconnect" class="btn btn-warning mb-3" style="display: none">Reconnect</button>
+            <button id="battery-disconnect" class="btn btn-secondary mb-3" style="display: none">Disconnect</button>
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
@@ -261,6 +272,8 @@
         let $bcc = document.getElementById('battery-connect-container');
         let $bc = document.getElementById('battery-connect');
         let $rc = document.getElementById('battery-reconnect');
+        let $dc = document.getElementById('battery-disconnect');
+        let $lu = document.getElementById('last-update');
         let $dbg = document.getElementById('debug-toggle');
         let $tf = document.getElementById('temperatures-form');
         let $btf = document.getElementById('bms-temp-form');
@@ -356,6 +369,29 @@
             return fmt.format(hours) + "h " + minutes + "m";
         }
 
+        // "Last update" indicator: time of the last valid frame, refreshed every second.
+        const STALE_AFTER_MS = 10000;
+        let lastFrameAt = null;
+        function formatAge(ms) {
+            let sec = Math.max(0, Math.round(ms / 1000));
+            if(sec < 60) {
+                return sec + 's ago';
+            }
+            if(sec < 3600) {
+                return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's ago';
+            }
+            return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm ago';
+        }
+        function updateAge() {
+            if(lastFrameAt === null) {
+                return;
+            }
+            let age = Date.now() - lastFrameAt;
+            $lu.textContent = 'Last update: ' + new Date(lastFrameAt).toLocaleTimeString() + ' (' + formatAge(age) + ')';
+            $lu.classList.toggle('stale', age > STALE_AFTER_MS);
+        }
+        setInterval(updateAge, 1000);
+
         function renderFrame(payload) {
             let voltage = payload.getUint32(12, true) / 1000;
             let current = payload.getInt32(48, true) / 1000;
@@ -430,6 +466,8 @@
                 }
                 try {
                     renderFrame(packet);
+                    lastFrameAt = Date.now();
+                    updateAge();
                 } catch (error) {
                     console.error(error);
                 }
@@ -438,6 +476,7 @@
 
             $msg.style.display = 'none';
             $rc.style.display = 'none';
+            $dc.style.display = 'inline-block';
 
             (async function() {
                 while(s.alive) {
@@ -471,9 +510,26 @@
             if(session) {
                 session.alive = false;
             }
-            showMessage('Battery disconnected.');
+            $dc.style.display = 'none';
+            showMessage(session && session.manual ? 'Disconnected.' : 'Battery disconnected.');
             $rc.style.display = 'inline-block';
         }
+
+        // User-initiated disconnect: stop polling, drop the GATT connection, offer Reconnect.
+        $dc.onclick = (e) => {
+            e.preventDefault();
+            if(session) {
+                session.manual = true;
+            }
+            try {
+                if(batteryDevice && batteryDevice.gatt.connected) {
+                    batteryDevice.gatt.disconnect();
+                }
+            } catch(err) {
+                console.error(err);
+            }
+            onDisconnected();
+        };
 
         // Footer: deployed version (from version.js) and offline-cache status.
         let $ver = document.getElementById('version-indicator');
