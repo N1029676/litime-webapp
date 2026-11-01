@@ -75,6 +75,34 @@
             height: 20px;
             background-color: var(--accent);
         }
+        #myTrack {
+            position: relative;
+            background-color: var(--surface-2);
+        }
+        /* Threshold lines: black outline keeps them visible over the yellow fill */
+        .marker {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            margin-left: -1px;
+            box-shadow: 0 0 0 1px #000;
+        }
+        .marker-red { background-color: #ff3b30; }
+        .marker-yellow { background-color: var(--accent); }
+        #markerLabels {
+            position: relative;
+            height: 1.3em;
+            font-size: 0.7rem;
+            line-height: 1.3em;
+        }
+        #markerLabels > span {
+            position: absolute;
+            transform: translateX(-50%);
+            background: none;
+        }
+        #markerLabels > .marker-red { color: #ff3b30; }
+        #markerLabels > .marker-yellow { color: var(--accent); }
         #myPercent {
             color: var(--accent);
             font-weight: bold;
@@ -154,7 +182,15 @@
         <div class="container">
             <div id="myProgress">
                 <span>Charge Level</span><span id="myPercent" class="float-end">-</span>
-                <div id="myBar"></div>
+                <div id="myTrack">
+                    <div id="myBar"></div>
+                    <div class="marker marker-red" style="left: 10%"></div>
+                    <div class="marker marker-yellow" style="left: 25%"></div>
+                </div>
+                <div id="markerLabels">
+                    <span class="marker-red" style="left: 10%">10%</span>
+                    <span class="marker-yellow" style="left: 25%">25%</span>
+                </div>
             </div>
             
             <div class="input-group mb-3">
