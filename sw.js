@@ -1,8 +1,9 @@
-// Cache-first service worker. The cache name changes with version.js, so each deploy
+// Cache-first service worker. VERSION is stamped by bump-version.sh, so sw.js itself changes on
+// every deploy (the browser always re-fetches sw.js, bypassing the HTTP cache). Each deploy then
 // installs a fresh cache and the old one is deleted on activate.
-importScripts('./version.js');
+const VERSION = "2026-11-01T21:05:37Z"; // stamped by bump-version.sh
 
-const CACHE = 'litime-' + APP_VERSION;
+const CACHE = 'litime-' + VERSION;
 const ASSETS = [
   './',
   './index.html',
