@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <meta name="theme-color" content="#484848">
+    <meta name="theme-color" content="#000000">
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
@@ -15,34 +15,55 @@
 
     <title>Li Time Battery Status</title>
     <style>
+        :root {
+            color-scheme: dark;
+            --bg: #000;
+            --surface: #1a1a1a;
+            --surface-2: #2a2a2a;
+            --border: #3d3d3d;
+            --text: #ececec;
+            --muted: #9a9a9a;
+            --accent: #ffc107;
+            --accent-hover: #ffd043;
+        }
+
         body {
-            background-color: #484848;
+            background-color: var(--bg);
+            color: var(--text);
         }
 
         h1 {
-            color: white;
+            color: var(--accent);
             text-align: center;
             font-weight: bold;
         }
 
         .text-contrast {
-            color: white;
+            color: var(--text);
         }
 
         .form-control:disabled, .form-control[readonly] {
-            background-color: #fff;
+            background-color: var(--surface);
+            color: var(--text);
+            border-color: var(--border);
             opacity: 1;
         }
         .input-group-text {
             width: 160px;
+            background-color: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
         }
         .timestamp {
             font-size: 0.8em;
         }
         #myProgress {
-            background-color: white;
+            background-color: var(--surface);
+            border: 1px solid var(--border);
             border-radius: 5px;
             margin-bottom: 15px;
+            overflow: hidden;
+            color: var(--muted);
         }
 
         #myProgress > span {
@@ -51,15 +72,74 @@
 
         #myBar {
             width: 0%;
-            padding: 10px;
-            background-color: #04AA6D;
-            text-align: center; /* To center it horizontally (if you want) */
-            color: white;
-            border-radius: 0px 0px 0px 5px;
+            height: 20px;
+            background-color: var(--accent);
+        }
+        #myPercent {
+            color: var(--accent);
+            font-weight: bold;
         }
 
         a {
-            color: #03a0fd
+            color: var(--accent);
+        }
+        a:hover {
+            color: var(--accent-hover);
+        }
+
+        .btn-primary, .btn-warning {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: #000;
+            font-weight: 600;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-warning:hover, .btn-warning:focus {
+            background-color: var(--accent-hover);
+            border-color: var(--accent-hover);
+            color: #000;
+        }
+        .btn-primary:focus, .btn-warning:focus, .btn-secondary:focus {
+            box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.4);
+        }
+        .btn-secondary {
+            background-color: var(--surface-2);
+            border-color: var(--border);
+            color: var(--text);
+        }
+        .btn-secondary:hover {
+            background-color: var(--border);
+            border-color: var(--muted);
+            color: var(--text);
+        }
+
+        .alert-primary {
+            background-color: var(--surface);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .form-check-input {
+            background-color: var(--surface-2);
+            border-color: var(--muted);
+        }
+        .form-check-input:checked {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+        .form-check-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.4);
+        }
+        .form-switch .form-check-input:not(:checked):not(:focus) {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%239a9a9a'/%3e%3c/svg%3e");
+        }
+        .form-switch .form-check-input:checked {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23000'/%3e%3c/svg%3e");
+        }
+
+        #debug-log {
+            background: var(--surface) !important;
+            border: 1px solid var(--border);
         }
     </style>
   </head>
@@ -73,8 +153,8 @@
         </div>
         <div class="container">
             <div id="myProgress">
-                <span>Charge Level</span>
-                <div id="myBar">-</div>
+                <span>Charge Level</span><span id="myPercent" class="float-end">-</span>
+                <div id="myBar"></div>
             </div>
             
             <div class="input-group mb-3">
@@ -113,7 +193,7 @@
                 <label class="form-check-label text-contrast" for="debug-toggle">Debug: log raw notifications to console, probe 0xFFE3</label>
             </div>
             <div id="debug-panel" class="mb-3" style="display: none">
-                <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; background: #2b2b2b; padding: 8px; border-radius: 5px"></pre>
+                <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; padding: 8px; border-radius: 5px"></pre>
                 <button id="debug-copy" class="btn btn-sm btn-secondary">Copy log</button>
             </div>
 
@@ -155,6 +235,7 @@
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
         let elem = document.getElementById("myBar");
+        let $pct = document.getElementById("myPercent");
 
         // Debug toggle (persisted per-browser; storage may be unavailable).
         let debug = false;
@@ -284,7 +365,7 @@
             $wf.value = fmt.format((current * voltage).toFixed(2));
 
             elem.style.width = fmt.format(chargePercent) + "%";
-            elem.innerHTML = fmt.format(chargePercent) + "%";
+            $pct.textContent = fmt.format(chargePercent) + "%";
 
             $cvf.value = cellVolts.join(', ');
         }
