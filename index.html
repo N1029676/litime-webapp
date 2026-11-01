@@ -110,7 +110,11 @@
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
-                <label class="form-check-label text-contrast" for="debug-toggle">Debug: log raw notifications to console</label>
+                <label class="form-check-label text-contrast" for="debug-toggle">Debug: log raw notifications to console, probe 0xFFE3</label>
+            </div>
+            <div id="debug-panel" class="mb-3" style="display: none">
+                <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; background: #2b2b2b; padding: 8px; border-radius: 5px"></pre>
+                <button id="debug-copy" class="btn btn-sm btn-secondary">Copy log</button>
             </div>
 
             <div id="listContainer"></div>
@@ -156,10 +160,67 @@
         let debug = false;
         try { debug = localStorage.getItem('litimeDebug') === '1'; } catch (e) {}
         $dbg.checked = debug;
+        let $dpanel = document.getElementById('debug-panel');
+        let $dlog = document.getElementById('debug-log');
+        $dpanel.style.display = debug ? 'block' : 'none';
         $dbg.onchange = () => {
             debug = $dbg.checked;
+            $dpanel.style.display = debug ? 'block' : 'none';
             try { localStorage.setItem('litimeDebug', debug ? '1' : '0'); } catch (e) {}
         };
+        document.getElementById('debug-copy').onclick = () => {
+            if(navigator.clipboard) {
+                navigator.clipboard.writeText($dlog.textContent).catch(console.error);
+            }
+        };
+
+        // On-page debug log (last 60 lines); also mirrored to the console.
+        const debugLines = [];
+        function debugLog(text) {
+            console.log('[litime] ' + text);
+            debugLines.push(new Date().toISOString().slice(11, 23) + ' ' + text);
+            if(debugLines.length > 60) {
+                debugLines.shift();
+            }
+            $dlog.textContent = debugLines.join('\n');
+            $dlog.scrollTop = $dlog.scrollHeight;
+        }
+
+        function describeProperties(props) {
+            return ['broadcast', 'read', 'writeWithoutResponse', 'write', 'notify', 'indicate',
+                'authenticatedSignedWrites', 'reliableWrite', 'writableAuxiliaries']
+                .filter(k => props[k]).join(', ') || 'none';
+        }
+
+        // Debug-only: report characteristic properties and listen on 0xFFE3.
+        // Subscribing to notifications writes the standard CCCD descriptor of 0xFFE3 (nothing is
+        // ever written to the 0xFFE3 value). Runs from the poll loop so GATT operations never overlap.
+        async function probeFfe3(s) {
+            if(!debug || s.probed) {
+                return;
+            }
+            s.probed = true;
+            try {
+                debugLog('0xFFE1 properties: ' + describeProperties(s.notifyCharacteristic.properties));
+                debugLog('0xFFE2 properties: ' + describeProperties(s.writeCharacteristic.properties));
+                const c = await s.service.getCharacteristic(0xFFE3);
+                debugLog('0xFFE3 properties: ' + describeProperties(c.properties));
+                if(!c.properties.notify && !c.properties.indicate) {
+                    debugLog('0xFFE3 has no notify/indicate; not subscribing');
+                    return;
+                }
+                c.addEventListener('characteristicvaluechanged', (event) => {
+                    const v = event.target.value;
+                    if(debug) {
+                        debugLog('0xFFE3 notification ' + v.byteLength + ' bytes: ' + toHex(v));
+                    }
+                });
+                await c.startNotifications();
+                debugLog('0xFFE3 subscribed, listening');
+            } catch(err) {
+                debugLog('0xFFE3 probe failed: ' + err);
+            }
+        }
 
         function toHex(dataView) {
             return Array.from(new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength))
@@ -237,7 +298,7 @@
             const writeCharacteristic = await service.getCharacteristic(0xFFE2);
             const notifyCharacteristic = await service.getCharacteristic(0xFFE1);
 
-            const s = { alive: true, waiting: false };
+            const s = { alive: true, waiting: false, probed: false, service, writeCharacteristic, notifyCharacteristic };
             session = s;
 
             notifyCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
@@ -264,6 +325,7 @@
             (async function() {
                 while(s.alive) {
                     try {
+                        await probeFfe3(s);
                         s.waiting = true;
                         if(writeCharacteristic.writeValueWithResponse) {
                             await writeCharacteristic.writeValueWithResponse(REQUEST_GET_STATS);
