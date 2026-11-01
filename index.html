@@ -509,26 +509,79 @@
         }
 
         let batteryDevice = null;
+        // Opaque, per-origin Web Bluetooth id of the last battery we connected to (not the MAC address).
+        const DEVICE_KEY = 'litimeDeviceId';
+        let autoWatch = null;
+
+        async function connectDevice(device) {
+            batteryDevice = device;
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+            await startSession(device);
+            if($bcc.parentNode) {
+                $bcc.parentNode.removeChild($bcc);
+            }
+            try { localStorage.setItem(DEVICE_KEY, device.id); } catch (e) {}
+        }
 
         $bc.onclick = (e) => {
             e.preventDefault();
+            if(autoWatch) {
+                autoWatch.abort();
+                autoWatch = null;
+            }
 
             (async function() {
-                batteryDevice = await navigator.bluetooth.requestDevice({
+                const device = await navigator.bluetooth.requestDevice({
                     filters: [{ namePrefix: 'L-' }],
                     optionalServices: [0xFFE0]
                 });
-                batteryDevice.addEventListener('gattserverdisconnected', onDisconnected);
-
-                await startSession(batteryDevice);
-                if($bcc.parentNode) {
-                    $bcc.parentNode.removeChild($bcc);
-                }
+                await connectDevice(device);
             })().catch((err) => {
                 console.error(err);
                 showMessage(err);
             });
         };
+
+        // On load: reconnect to the previously used battery without a tap. Needs getDevices()
+        // (Chrome's persistent Bluetooth permissions); otherwise the Connect button is used.
+        async function autoConnect() {
+            let savedId = null;
+            try { savedId = localStorage.getItem(DEVICE_KEY); } catch (e) {}
+            if(!savedId || !navigator.bluetooth || !navigator.bluetooth.getDevices) {
+                return;
+            }
+            const device = (await navigator.bluetooth.getDevices()).find(d => d.id === savedId);
+            if(!device) {
+                return;
+            }
+            showMessage('Looking for your battery... or tap Connect to choose one.');
+            if(!device.watchAdvertisements) {
+                await connectDevice(device);
+                return;
+            }
+            // Wait until the battery is advertising (in range, not held by another app), then connect.
+            const watch = new AbortController();
+            autoWatch = watch;
+            device.addEventListener('advertisementreceived', async () => {
+                if(watch.signal.aborted || (session && session.alive)) {
+                    return;
+                }
+                watch.abort();
+                autoWatch = null;
+                try {
+                    await connectDevice(device);
+                } catch(err) {
+                    console.error(err);
+                    showMessage(err);
+                }
+            });
+            await device.watchAdvertisements({ signal: watch.signal });
+        }
+
+        autoConnect().catch((err) => {
+            console.error(err);
+            showMessage('Auto-connect failed (' + err + '). Tap Connect.');
+        });
 
         $rc.onclick = (e) => {
             e.preventDefault();
