@@ -101,6 +101,12 @@
                 <input type="text" class="form-control" id="cellvolts-form" style="font-size: 0.8rem" aria-describedby="cellvolts" disabled="true">
             </div>
             <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
+            <button id="battery-reconnect" class="btn btn-warning mb-3" style="display: none">Reconnect</button>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
+                <label class="form-check-label text-contrast" for="debug-toggle">Debug: log raw notifications to console</label>
+            </div>
 
             <div id="listContainer"></div>
         </div>
@@ -119,169 +125,204 @@
         }
 
         const fmt = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 });
-        let currentArray = [];
-        let statisticsArray = JSON.parse(localStorage.getItem('statisticsArray'));
-        if (!statisticsArray) {
-            statisticsArray = [];
-        }
 
-        let date = Date.now();
+        // Highest offset read by the parser is the u16 at 64, so a valid frame needs 66 bytes.
+        const MIN_FRAME_LENGTH = 66;
+        // Request written to 0xFFE2 (the only characteristic this app writes to).
+        const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
+        const REPLY_TIMEOUT_MS = 5000;
 
         let $bcc = document.getElementById('battery-connect-container');
         let $bc = document.getElementById('battery-connect');
+        let $rc = document.getElementById('battery-reconnect');
+        let $dbg = document.getElementById('debug-toggle');
         let $tf = document.getElementById('temperatures-form');
         let $btf = document.getElementById('bms-temp-form');
-        // let $tfC = document.getElementById('temperaturesC-form');
         let $vf = document.getElementById('volt-form');
-        let $cf = document.getElementById('current-form');
         let $lf = document.getElementById('level-form');
         let $cvf = document.getElementById('cellvolts-form');
         let $sf = document.getElementById('state-form');
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
         let elem = document.getElementById("myBar");
-        let width = 1;
 
-        function getTimestamp (time) {
-        const pad = (n,s=2) => (`${new Array(s).fill(0)}${n}`).slice(-s);
-        const d = new Date(time);
-        
-        return `${pad(d.getFullYear(),4)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        // Debug toggle (persisted per-browser; storage may be unavailable).
+        let debug = false;
+        try { debug = localStorage.getItem('litimeDebug') === '1'; } catch (e) {}
+        $dbg.checked = debug;
+        $dbg.onchange = () => {
+            debug = $dbg.checked;
+            try { localStorage.setItem('litimeDebug', debug ? '1' : '0'); } catch (e) {}
+        };
+
+        function toHex(dataView) {
+            return Array.from(new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength))
+                .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+                .join(' ');
         }
-        
-        $bc.onclick = (e) => {
-            e.preventDefault();
-            
-            (async function() {
-                let device;
-                if(navigator.userAgent.toLowerCase().includes('bluefy')) {
-                    device = await navigator.bluetooth.requestDevice({
-                        filters: [{services: [0xFFE0]}]
-                    });
-                } else {
-                    device = await navigator.bluetooth.requestDevice({
-                        filters: [{services: [0xFFE0]}]
-                    });
+
+        function showMessage(text) {
+            $msg.style.display = 'block';
+            $msg.textContent = text;
+        }
+
+        function formatDuration(hoursFloat) {
+            let hours = Math.floor(hoursFloat);
+            let minutes = String(Math.round((hoursFloat - hours) * 60)).padStart(2, '0');
+            return fmt.format(hours) + "h " + minutes + "m";
+        }
+
+        function renderFrame(payload) {
+            let voltage = payload.getUint32(12, true) / 1000;
+            let current = payload.getInt32(48, true) / 1000;
+            let remainingAh = payload.getUint16(62, true) / 100;
+            let capacityAh = payload.getUint16(64, true) / 100;
+
+            let cellVolts = [];
+            let offset = 16;
+            for(let x=0; x < 16; x++) {
+                let cellVolt = payload.getUint16(offset+x*2, true);
+                if(cellVolt !== 0) {
+                    cellVolts.push(cellVolt / 1000);
                 }
-                let server = await device.gatt.connect();
+            }
 
-                let service = await server.getPrimaryService(0xFFE0);
-                let rxCharacteristic = await service.getCharacteristic(0xFFE2);
+            let cellTempC = payload.getInt16(52, true);
+            let cellTempF = cellTempC * (9/5) + 32;
+            let bmsTempC = payload.getInt16(54, true);
+            let bmsTempF = bmsTempC * (9/5) + 32;
 
-                let txCharacteristic = await service.getCharacteristic(0xFFE1);
-                await txCharacteristic.startNotifications();
+            // Display stats
+            $tf.value = cellTempC + "°C / " + cellTempF.toFixed(2) + "°F";
+            $btf.value = bmsTempC + "°C / " + bmsTempF.toFixed(2) + "°F";
 
-                let requestType = '';
-                txCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+            let state = '-';
+            if(current > 0) {
+                let duration = (capacityAh - remainingAh) / current;
+                if(duration < 0) {
+                    duration = 0;
+                }
+                state = formatDuration(duration) + " till charged";
+            } else if(current < 0) {
+                state = formatDuration(Math.abs(remainingAh / current)) + " till depleted";
+            }
+
+            $vf.value = voltage + ' / ' + current;
+            let chargePercent = (remainingAh / capacityAh) * 100;
+            if(chargePercent > 100) {
+                chargePercent = 100;
+            }
+            $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + ")";
+            $sf.value = state;
+            $wf.value = fmt.format((current * voltage).toFixed(2));
+
+            elem.style.width = fmt.format(chargePercent) + "%";
+            elem.innerHTML = fmt.format(chargePercent) + "%";
+
+            $cvf.value = cellVolts.join(', ');
+        }
+
+        // One session per GATT connection. Setting alive=false stops its poll loop.
+        let session = null;
+
+        async function startSession(device) {
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(0xFFE0);
+            const writeCharacteristic = await service.getCharacteristic(0xFFE2);
+            const notifyCharacteristic = await service.getCharacteristic(0xFFE1);
+
+            const s = { alive: true, waiting: false };
+            session = s;
+
+            notifyCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                s.waiting = false;
+                const packet = event.target.value;
+                if(debug) {
+                    console.log('[litime] notification ' + packet.byteLength + ' bytes: ' + toHex(packet));
+                }
+                if(packet.byteLength < MIN_FRAME_LENGTH) {
+                    console.warn('[litime] skipping short frame (' + packet.byteLength + ' < ' + MIN_FRAME_LENGTH + ' bytes)');
+                    return;
+                }
+                try {
+                    renderFrame(packet);
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+            await notifyCharacteristic.startNotifications();
+
+            $msg.style.display = 'none';
+            $rc.style.display = 'none';
+
+            (async function() {
+                while(s.alive) {
                     try {
-                        const packet = event.target.value;
-                        const payload = new DataView(packet.buffer);
-
-                        let voltage = payload.getUint32(12, true) / 1000;
-                        let current = payload.getInt32(48, true) / 1000;
-                        let remianingAh = payload.getUint16(62, true) / 100;
-                        let capacityAh = payload.getUint16(64, true) / 100;
-
-                        let cellVolts = [];
-                        let offset = 16;
-                        for(let x=0; x < 16; x++) {
-                            let cellVolt = payload.getUint16(offset+x*2, true);
-                            if(cellVolt !== 0) {
-                                cellVolts.push(cellVolt / 1000);
-                            }
+                        s.waiting = true;
+                        if(writeCharacteristic.writeValueWithResponse) {
+                            await writeCharacteristic.writeValueWithResponse(REQUEST_GET_STATS);
+                        } else {
+                            await writeCharacteristic.writeValue(REQUEST_GET_STATS);
                         }
-
-                        let cellTempC = payload.getInt16(52, true);
-                        let cellTempF = cellTempC * (9/5) + 32;
-                        let bmsTempC = payload.getInt16(54, true);
-                        let bmsTempF = bmsTempC * (9/5) + 32;
-
-                        // Display stats
-                        $tf.value = cellTempC + "°C / " + cellTempF.toFixed(2) + "°F";
-                        $btf.value = bmsTempC + "°C / " + bmsTempF.toFixed(2) + "°F";
-
-                        let state = '-';
-                        if(current > 0) {
-                            let duration = ((capacityAh - remianingAh) / current).toFixed(3);
-                            if(duration < 0) {
-                                duration = 0;
-                            }
-                            let hours = Math.floor(duration);
-                            let minutes = new String(Math.round((duration - hours) * 60)).padStart(2, '0');
-                            state = fmt.format(hours) + "h " + minutes + "m till charged";
-                        } else if(current < 0) {
-                            let duration = Math.abs(remianingAh / current).toFixed(3);
-                            let hours = Math.floor(duration);
-                            let minutes = new String(Math.round((duration - hours) * 60)).padStart(2, '0');
-                            state = fmt.format(hours) + "h " + minutes + "m till depleted";
+                        const deadline = Date.now() + REPLY_TIMEOUT_MS;
+                        while(s.alive && s.waiting && Date.now() < deadline) {
+                            await timeout(250);
                         }
-
-                        $vf.value = voltage + ' / ' + current;
-                        let chargePercent = (remianingAh / capacityAh) * 100;
-                        if(chargePercent > 100) {
-                            chargePercent = 100;
-                        }
-                        $lf.value = fmt.format(chargePercent) + "% (" + remianingAh + "/" + capacityAh + ")";
-                        $sf.value = state;
-                        $wf.value = fmt.format((current * voltage).toFixed(2));
-
-                        elem.style.width = fmt.format(chargePercent) + "%";
-                        elem.innerHTML = fmt.format(chargePercent) + "%";
-
-                        $cvf.value = cellVolts.join(', ');
-                    } catch (error) {
-                        console.error(error);
-                    }
-
-                    requestType = '';
-                });
-
-                let requestReady = async function() {
-                    while(true) {
-                        if(requestType === '') {
+                    } catch(err) {
+                        if(!s.alive) {
                             break;
                         }
-                        await timeout(250);
-                    }
-                };
-
-                let getStats = async function () {
-                    const buffer = new ArrayBuffer(8);
-                    const view = new DataView(buffer);
-                    view.setUint16(0, 0x0000);
-                    view.setUint16(2, 0x0401);
-                    view.setUint16(4, 0x1355);
-                    view.setUint16(6, 0xAA17);
-
-                    requestType = 'getStats';
-                    if(rxCharacteristic.writeValueWithResponse) {
-                        await rxCharacteristic.writeValueWithResponse(buffer);
-                    } else {
-                        await rxCharacteristic.writeValue(buffer);
-                    }
-                };
-
-                $bcc.parentNode.removeChild($bcc);
-                $msg.style.display = 'none';
-
-                while(true) {
-                    try {
-                        //console.log('Starting battery read');
-                        await getStats();
-                        await requestReady();
-                    } catch(err) {
                         console.error(err);
-                        $msg.style.display = 'block';
-                        $msg.innerHTML = err;
+                        showMessage(err);
                     }
+                    s.waiting = false;
 
                     await timeout(3000);
                 }
+            })();
+        }
 
+        function onDisconnected() {
+            if(session) {
+                session.alive = false;
+            }
+            showMessage('Battery disconnected.');
+            $rc.style.display = 'inline-block';
+        }
+
+        let batteryDevice = null;
+
+        $bc.onclick = (e) => {
+            e.preventDefault();
+
+            (async function() {
+                batteryDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'L-' }],
+                    optionalServices: [0xFFE0]
+                });
+                batteryDevice.addEventListener('gattserverdisconnected', onDisconnected);
+
+                await startSession(batteryDevice);
+                if($bcc.parentNode) {
+                    $bcc.parentNode.removeChild($bcc);
+                }
             })().catch((err) => {
                 console.error(err);
-                $msg.style.display = 'block';
-                $msg.innerHTML = err;
+                showMessage(err);
+            });
+        };
+
+        $rc.onclick = (e) => {
+            e.preventDefault();
+            if(!batteryDevice) {
+                return;
+            }
+            $rc.style.display = 'none';
+            showMessage('Reconnecting...');
+            startSession(batteryDevice).catch((err) => {
+                console.error(err);
+                showMessage(err);
+                $rc.style.display = 'inline-block';
             });
         };
     </script>
