@@ -1,0 +1,15 @@
+{
+  "name": "LiTime Battery Status",
+  "short_name": "LiTime",
+  "description": "Monitor a LiTime LiFePO4 battery over Bluetooth, fully offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#484848",
+  "theme_color": "#484848",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
