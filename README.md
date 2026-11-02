@@ -13,7 +13,7 @@ Works in Chrome on Android and desktop (and Chromium derivatives). On Apple devi
 **Display**
 - **Battery graphic** at the top: 20 bars (5% each). Bars are red at 10% or below, yellow at 25% or below, green above. While charging, the last lit bar pulses slowly (disabled if the device asks for reduced motion).
 - **Last update** line with the time of the last valid frame and its age; turns red after 10 s without data.
-- **Rows:** Charge Level (`99% (49.5/50 Ah)`), Watts, Charge State (time till charged / depleted), Battery Temp and BMS Temp (°C / °F), Voltage, Current (positive = charging), Cell Volts. Values show units and two decimals.
+- **Rows:** Charge Level (`99% (49.5/50 Ah)`), Watts, Charge State (time till charged / depleted), Battery Temp and BMS Temp (°C / °F), Voltage, Current (positive = charging), Cell Volts, Balancing (In progress / Not balancing). Values show units and two decimals.
 - Dark theme (black, grey, yellow).
 
 **Connecting**
@@ -55,11 +55,14 @@ Reply fields (byte offsets):
 | 52 / 54 | i16 | cell / BMS temperature, °C |
 | 62 | u16 | amp-hour counter, ÷100 Ah. Can exceed rated capacity at full charge |
 | 64 | u16 | capacity, ÷100 Ah. The BMS appears to raise it at full charge (50.00 → 51.01 seen) |
+| 84 | u8 | cell balancing flag: 0 = not balancing, 1 = in progress. Matched the official app in four captured frames (see below) |
 | 90 | u16 | state of charge, %. The app uses this, as the official app does |
 | 92 | u16 | probably state of health, % (102 seen with 51.01 Ah). Unconfirmed |
 | 104 | u8 | checksum: sum of bytes 0–103, modulo 256 (observed; not validated by the app) |
 
-Not yet decoded: bytes 68, 70, 72–73, 76, 84, 88 and 96 hold unexplained flags or values. The balancing indicator shown by the official app has not been located; byte 84 is a candidate. Use the debug **Snapshot frame** button to capture frames in different states.
+Balancing evidence (official app vs byte 84): charging at 12% / not balancing = 0; full, balancing = 1 (two frames); full, "balancing complete" = 0. Byte 72 (value 4) tracks the same state in those frames and may be a related field, e.g. a cell mask. "Not balancing" can't distinguish "complete" from "not needed".
+
+Not yet decoded: bytes 68 (72 in every full-charge frame), 70, 72–73, 76, 88 and 96 hold unexplained flags or values. Use the debug **Snapshot frame** button to capture frames in different states and compare them with the official app.
 
 ## Development
 

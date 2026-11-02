@@ -243,6 +243,10 @@
                 <span class="input-group-text" id="cellvolts">Cell Volts</span>
                 <input type="text" class="form-control" id="cellvolts-form" style="font-size: 0.8rem" aria-describedby="cellvolts" disabled="true">
             </div>
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="balancing">Balancing</span>
+                <input type="text" class="form-control" id="balancing-form" aria-describedby="balancing" disabled="true">
+            </div>
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
@@ -279,6 +283,9 @@
         // Highest offset read by the parser is the u16 at 64, so a valid frame needs 66 bytes.
         const MIN_FRAME_LENGTH = 66;
         const SOC_OFFSET = 90;
+        // Cell balancing flag: 0 = not balancing, 1 = in progress. Matched the official app in 4 captured
+        // frames (not balancing, balancing x2, balancing complete); other values are shown as Unknown.
+        const BALANCE_OFFSET = 84;
         let lastParsed = '';
         // Request written to 0xFFE2 (the only characteristic this app writes to).
         const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
@@ -294,6 +301,7 @@
         let $cf = document.getElementById('current-form');
         let $lf = document.getElementById('level-form');
         let $cvf = document.getElementById('cellvolts-form');
+        let $bal = document.getElementById('balancing-form');
         let $sf = document.getElementById('state-form');
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
@@ -487,6 +495,10 @@
             renderBattery(chargePercent, current > 0);
 
             $cvf.value = cellVolts.map(v => fmt2.format(v)).join(', ') + ' V';
+
+            const balanceFlag = payload.byteLength > BALANCE_OFFSET ? payload.getUint8(BALANCE_OFFSET) : null;
+            $bal.value = balanceFlag === 1 ? 'In progress' : balanceFlag === 0 ? 'Not balancing' : balanceFlag === null ? '-' : 'Unknown (' + balanceFlag + ')';
+            lastParsed += ', balance@' + BALANCE_OFFSET + '=' + balanceFlag;
         }
 
         // Toolbar state. The second button is one control whose label is the state:
