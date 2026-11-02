@@ -232,8 +232,12 @@
                 <input type="text" class="form-control" id="bms-temp-form" aria-describedby="bmstemperatures" disabled="true">
             </div>
             <div class="input-group mb-3">
-                <span class="input-group-text" id="volt">Volt/Current</span>
+                <span class="input-group-text" id="volt">Voltage</span>
                 <input type="text" class="form-control" id="volt-form" aria-describedby="volt" disabled="true">
+            </div>
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="current">Current</span>
+                <input type="text" class="form-control" id="current-form" aria-describedby="current" disabled="true">
             </div>
             <div class="input-group mb-3">
                 <span class="input-group-text" id="cellvolts">Cell Volts</span>
@@ -281,6 +285,7 @@
         let $tf = document.getElementById('temperatures-form');
         let $btf = document.getElementById('bms-temp-form');
         let $vf = document.getElementById('volt-form');
+        let $cf = document.getElementById('current-form');
         let $lf = document.getElementById('level-form');
         let $cvf = document.getElementById('cellvolts-form');
         let $sf = document.getElementById('state-form');
@@ -446,18 +451,19 @@
                 state = formatDuration(Math.abs(remainingAh / current)) + " till depleted";
             }
 
-            $vf.value = voltage + ' / ' + current;
+            $vf.value = voltage + ' V';
+            $cf.value = current + ' A';
             let chargePercent = (remainingAh / capacityAh) * 100;
             if(chargePercent > 100) {
                 chargePercent = 100;
             }
             $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + " Ah)";
             $sf.value = state;
-            $wf.value = fmt.format((current * voltage).toFixed(2));
+            $wf.value = fmt.format((current * voltage).toFixed(2)) + ' W';
 
             renderBattery(chargePercent, current > 0);
 
-            $cvf.value = cellVolts.join(', ');
+            $cvf.value = cellVolts.join(', ') + ' V';
         }
 
         // Toolbar state. The second button is one control whose label is the state:
