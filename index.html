@@ -246,9 +246,10 @@
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
-                <label class="form-check-label text-contrast" for="debug-toggle">Debug: log raw notifications to console, probe 0xFFE3</label>
+                <label class="form-check-label text-contrast" for="debug-toggle">Debug: show raw frames, probe 0xFFE3</label>
             </div>
             <div id="debug-panel" class="mb-3" style="display: none">
+                <pre id="debug-frame" class="text-contrast small" style="white-space: pre-wrap; word-break: break-all; padding: 8px; border-radius: 5px; background: var(--surface); border: 1px solid var(--border)">Last frame: none yet</pre>
                 <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; padding: 8px; border-radius: 5px"></pre>
                 <button id="debug-copy" class="btn btn-sm btn-secondary">Copy log</button>
             </div>
@@ -276,6 +277,8 @@
 
         // Highest offset read by the parser is the u16 at 64, so a valid frame needs 66 bytes.
         const MIN_FRAME_LENGTH = 66;
+        const SOC_OFFSET = 90;
+        let lastParsed = '';
         // Request written to 0xFFE2 (the only characteristic this app writes to).
         const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
         const REPLY_TIMEOUT_MS = 5000;
@@ -318,6 +321,7 @@
         $dbg.checked = debug;
         let $dpanel = document.getElementById('debug-panel');
         let $dlog = document.getElementById('debug-log');
+        let $dframe = document.getElementById('debug-frame');
         $dpanel.style.display = debug ? 'block' : 'none';
         $dbg.onchange = () => {
             debug = $dbg.checked;
@@ -326,7 +330,7 @@
         };
         document.getElementById('debug-copy').onclick = () => {
             if(navigator.clipboard) {
-                navigator.clipboard.writeText($dlog.textContent).catch(console.error);
+                navigator.clipboard.writeText($dframe.textContent + '\n\n' + $dlog.textContent).catch(console.error);
             }
         };
 
@@ -424,6 +428,21 @@
             let remainingAh = payload.getUint16(62, true) / 100;
             let capacityAh = payload.getUint16(64, true) / 100;
 
+            // The BMS reports its own state of charge (whole %) at byte 90; the official app uses it
+            // (e.g. 99% -> 49.5 Ah of 50). The Ah counter at byte 62 can run past the nominal capacity
+            // (50.93 Ah seen at "99%"), which previously showed 100% and "0h 00m". Fall back to the
+            // counter if the frame is too short or the value is not a sane percentage.
+            const counterAh = remainingAh;
+            const soc = payload.byteLength >= SOC_OFFSET + 2 ? payload.getUint16(SOC_OFFSET, true) : null;
+            let chargePercent;
+            if(soc !== null && soc <= 100) {
+                chargePercent = soc;
+                remainingAh = Math.round(soc * capacityAh) / 100;
+            } else {
+                chargePercent = Math.min((remainingAh / capacityAh) * 100, 100);
+            }
+            lastParsed = 'SOC@' + SOC_OFFSET + '=' + soc + '%, Ah counter@62=' + counterAh + ', capacity@64=' + capacityAh + ', used=' + fmt.format(chargePercent) + '%';
+
             let cellVolts = [];
             let offset = 16;
             for(let x=0; x < 16; x++) {
@@ -455,10 +474,6 @@
 
             $vf.value = fmt2.format(voltage) + ' V';
             $cf.value = fmt2.format(current) + ' A';
-            let chargePercent = (remainingAh / capacityAh) * 100;
-            if(chargePercent > 100) {
-                chargePercent = 100;
-            }
             $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + " Ah)";
             $sf.value = state;
             $wf.value = fmt2.format(current * voltage) + ' W';
@@ -511,6 +526,9 @@
                 }
                 try {
                     renderFrame(packet);
+                    if(debug) {
+                        $dframe.textContent = 'Last frame (' + packet.byteLength + ' bytes, ' + new Date().toLocaleTimeString() + '):\n' + toHex(packet) + '\n' + lastParsed;
+                    }
                     lastFrameAt = Date.now();
                     updateAge();
                 } catch (error) {
