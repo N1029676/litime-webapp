@@ -45,24 +45,64 @@ Works in Chrome on Android and desktop (and Chromium derivatives). On Apple devi
 
 Do **not** write to service `f000ffc0-0451-4000-b000-000000000000`; it looks like a TI firmware-update service.
 
-Reply fields (byte offsets):
+Reply layout, with a real capture decoded below (battery full and idle, balancing complete). All multi-byte values are little-endian.
 
-| Offset | Type | Meaning |
-|---|---|---|
-| 12 | u32 | pack voltage, mV (equals the sum of the cells) |
-| 16… | u16 × up to 16 | cell voltages, mV (zero = unused) |
-| 48 | i32 | current, mA (positive = charging) |
-| 52 / 54 | i16 | cell / BMS temperature, °C |
-| 62 | u16 | amp-hour counter, ÷100 Ah. Can exceed rated capacity at full charge |
-| 64 | u16 | capacity, ÷100 Ah. The BMS appears to raise it at full charge (50.00 → 51.01 seen) |
-| 84 | u8 | cell balancing flag: 0 = not balancing, 1 = in progress. Matched the official app in four captured frames (see below) |
-| 90 | u16 | state of charge, %. The app uses this, as the official app does |
-| 92 | u16 | probably state of health, % (102 seen with 51.01 Ah). Unconfirmed |
-| 104 | u8 | checksum: sum of bytes 0–103, modulo 256 (observed; not validated by the app) |
+```
+00 00 65 01 93 55 AA 00 52 32 00 00 8E 34 00 00 0E 0D 30 0D 23 0D 2D 0D 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 10 00 10 00 00 00 00 00 00 00 ED 13 ED 13 00 00 48 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 00 64 00 66 00 00 00 02 00 00 00 74 00 00 00 AD
+```
 
-Balancing evidence (official app vs byte 84): charging at 12% / not balancing = 0; full, balancing = 1 (two frames); full, "balancing complete" = 0. Byte 72 (value 4) tracks the same state in those frames and may be a related field, e.g. a cell mask. "Not balancing" can't distinguish "complete" from "not needed".
+| Bytes | Raw | Field | Value | Status |
+|---|---|---|---|---|
+| 0–1 | `00 00` | fixed header | `00 00` | fixed |
+| 2 | `65` | length = frame size − 4 | 101 | fixed (always 105-byte frames here) |
+| 3 | `01` | version / type | 1 | fixed |
+| 4 | `93` | command: request `0x13` with the top bit set | `0x93` | fixed |
+| 5–6 | `55 AA` | magic | `55 AA` | fixed |
+| 7 | `00` | unknown | 0 | zero in all four captures |
+| 8–11 | `52 32 00 00` | u32 mV, unidentified; always a little below pack voltage | 12882 mV | unknown |
+| 12–15 | `8E 34 00 00` | u32 pack voltage, mV (= sum of the cells) | 13454 mV = 13.45 V | matches official app |
+| 16–47 | `0E 0D 30 0D 23 0D 2D 0D …` | 16 × u16 cell voltages, mV (0 = unused slot) | 3342, 3376, 3363, 3373 mV | sum equals pack voltage |
+| 48–51 | `00 00 00 00` | i32 current, mA (positive = charging) | 0 mA | matches official app |
+| 52–53 | `10 00` | i16 cell temperature, °C | 16 °C | matches official app |
+| 54–55 | `10 00` | i16 BMS temperature, °C | 16 °C | likely (official app shows one temperature) |
+| 56–61 | `00 00 00 00 00 00` | unknown | 0 | zero in all four captures |
+| 62–63 | `ED 13` | u16 amp-hour counter, ÷100 Ah (can exceed rated capacity) | 51.01 Ah | plausible |
+| 64–65 | `ED 13` | u16 capacity, ÷100 Ah (BMS raised it from 50.00 at full charge) | 51.01 Ah | matches official app (at 50.00) |
+| 66–67 | `00 00` | unknown | 0 | zero in all four captures |
+| 68–69 | `48 00` | u16 unknown | 72 | 0 in the charging capture, 72 in all full-charge captures |
+| 70–71 | `01 00` | u16 unknown | 1 | 1 in all captures |
+| 72 | `00` | u8 status; 4 while balancing | 0 | tracks balancing, see below |
+| 73 | `00` | u8 unknown | 0 | 0x10 in the charging capture only (maybe a charging flag) |
+| 74–83 | `00 00 00 00 …` | unknown | 0 | byte 76 was 4 once (5:56 PM capture) |
+| 84 | `00` | **cell balancing flag**: 0 = not balancing, 1 = in progress | 0 | matches official app (4 captures) |
+| 85–87 | `00 00 00` | unknown | 0 | zero in all four captures |
+| 88 | `04` | u8 status; 1 while charging, 4 when full | 4 | unknown meaning |
+| 89 | `00` | unknown | 0 | zero in all four captures |
+| 90–91 | `64 00` | u16 state of charge, % | 100 % | matches official app |
+| 92–93 | `66 00` | u16 state of health, % (51.01 ÷ 50.00 = 102) | 102 % | probable |
+| 94–95 | `00 00` | unknown | 0 | zero in all four captures |
+| 96–97 | `02 00` | u16 cycle count? | 2 | candidate: official app also shows 2 cycles |
+| 98–99 | `00 00` | unknown | 0 | zero in all four captures |
+| 100–101 | `74 00` | u16 unknown | 116 | 116 in all captures |
+| 102–103 | `00 00` | unknown | 0 | zero in all four captures |
+| 104 | `AD` | checksum = sum of bytes 0–103, modulo 256 | `0xAD` | verified on all four captures; not validated by the app |
 
-Not yet decoded: bytes 68 (72 in every full-charge frame), 70, 72–73, 76, 88 and 96 hold unexplained flags or values. Use the debug **Snapshot frame** button to capture frames in different states and compare them with the official app.
+"Matches official app" means the value agreed with what the Li Time app displayed at the same time. "Unknown" fields were zero or constant across the captures so far.
+
+### Status bytes across four captures
+
+Bytes whose value changed between captures, compared with what the official app showed at the time:
+
+| Capture | Official app | 72 | 73 | 76 | 84 | 88 |
+|---|---|---|---|---|---|---|
+| Charging at 12%, 9.7 A | not balancing | 0 | 16 | 0 | 0 | 1 |
+| Full, 5:56 PM | balancing | 4 | 0 | 4 | 1 | 4 |
+| Full, 7:33 PM | balancing | 4 | 0 | 0 | 1 | 4 |
+| Full, 2:07 AM | balancing complete | 0 | 0 | 0 | 0 | 4 |
+
+Byte 84 and byte 72 both follow the official app's balancing state in these captures; the app uses byte 84. "Not balancing" can't distinguish "complete" from "not needed". Serial number, firmware versions and the rated capacity are not in this reply; the official app must get them with other commands (see below).
+
+Not in this reply: serial number, firmware versions (BMS and Bluetooth). Other requests use other command bytes (the reply command is the request command with the top bit set); capture the official app's Bluetooth traffic (Android HCI snoop log) to find them. Use the debug **Snapshot frame** button to capture more frames.
 
 ## Development
 
