@@ -251,6 +251,7 @@
             <div id="debug-panel" class="mb-3" style="display: none">
                 <pre id="debug-frame" class="text-contrast small" style="white-space: pre-wrap; word-break: break-all; padding: 8px; border-radius: 5px; background: var(--surface); border: 1px solid var(--border)">Last frame: none yet</pre>
                 <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; padding: 8px; border-radius: 5px"></pre>
+                <button id="debug-snapshot" class="btn btn-sm btn-secondary">Snapshot frame</button>
                 <button id="debug-copy" class="btn btn-sm btn-secondary">Copy log</button>
             </div>
 
@@ -327,6 +328,11 @@
             debug = $dbg.checked;
             $dpanel.style.display = debug ? 'block' : 'none';
             try { localStorage.setItem('litimeDebug', debug ? '1' : '0'); } catch (e) {}
+        };
+        // Appends the latest frame to the log, so frames from different battery states can be compared later.
+        let lastFrameHex = '';
+        document.getElementById('debug-snapshot').onclick = () => {
+            debugLog(lastFrameHex ? 'SNAPSHOT ' + lastFrameHex + ' | ' + lastParsed : 'SNAPSHOT: no frame received yet');
         };
         document.getElementById('debug-copy').onclick = () => {
             if(navigator.clipboard) {
@@ -527,6 +533,7 @@
                 try {
                     renderFrame(packet);
                     if(debug) {
+                        lastFrameHex = toHex(packet);
                         $dframe.textContent = 'Last frame (' + packet.byteLength + ' bytes, ' + new Date().toLocaleTimeString() + '):\n' + toHex(packet) + '\n' + lastParsed;
                     }
                     lastFrameAt = Date.now();
