@@ -57,52 +57,72 @@
         .timestamp {
             font-size: 0.8em;
         }
-        #myProgress {
-            background-color: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 5px;
-            margin-bottom: 15px;
-            overflow: hidden;
-            color: var(--muted);
+        /* Battery graphic: 20 bars (5% each), terminal on the right, threshold ticks at 10% / 25% */
+        #battery {
+            display: flex;
+            align-items: center;
+            margin: 4px 0 2.2rem;
         }
-
-        #myProgress > span {
+        #battery-body {
+            flex: 1;
+            border: 3px solid var(--muted);
+            border-radius: 10px;
             padding: 5px;
+            background: var(--bg);
         }
-
-        #myBar {
-            width: 0%;
-            height: 20px;
-            background-color: var(--accent);
+        #battery-cap {
+            width: 9px;
+            height: 38%;
+            background: var(--muted);
+            border-radius: 0 4px 4px 0;
         }
-        #myTrack {
+        #battery-cells {
             position: relative;
-            background-color: var(--surface-2);
         }
-        /* Threshold lines: black outline keeps them visible over the yellow fill */
+        #battery-bars {
+            display: flex;
+            gap: 3px;
+        }
+        #battery-bars > span {
+            flex: 1;
+            height: 44px;
+            border-radius: 3px;
+            background: var(--surface-2);
+        }
+        #battery-bars > span.on {
+            background: var(--accent);
+        }
+        /* Charging: the last lit bar pulses slowly */
+        #battery-bars > span.pulse {
+            background: var(--accent);
+            animation: bar-pulse 2.6s ease-in-out infinite;
+        }
+        @keyframes bar-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #battery-bars > span.pulse { animation: none; }
+        }
+        /* Threshold lines: black outline keeps them visible over the yellow bars */
         .marker {
             position: absolute;
-            top: 0;
-            bottom: 0;
+            top: -2px;
+            bottom: -2px;
             width: 2px;
             margin-left: -1px;
             box-shadow: 0 0 0 1px #000;
         }
         .marker-red { background-color: #ff3b30; }
         .marker-yellow { background-color: var(--accent); }
-        #markerLabels {
-            position: relative;
-            height: 1.3em;
-            font-size: 0.7rem;
-            line-height: 1.3em;
-        }
-        #markerLabels > span {
+        .marker-label {
             position: absolute;
+            top: calc(100% + 12px);
             transform: translateX(-50%);
-            background: none;
+            font-size: 0.7rem;
         }
-        #markerLabels > .marker-red { color: #ff3b30; }
-        #markerLabels > .marker-yellow { color: var(--accent); }
+        .marker-label.marker-red { background: none; color: #ff3b30; }
+        .marker-label.marker-yellow { background: none; color: var(--accent); }
         #last-update {
             text-align: center;
             font-size: 0.85rem;
@@ -112,11 +132,6 @@
         #last-update.stale {
             color: #ff3b30;
         }
-        #myPercent {
-            color: var(--accent);
-            font-weight: bold;
-        }
-
         a {
             color: var(--accent);
         }
@@ -202,17 +217,17 @@
             <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
         </div>
         <div class="container">
-            <div id="myProgress">
-                <span>Charge Level</span><span id="myPercent" class="float-end">-</span>
-                <div id="myTrack">
-                    <div id="myBar"></div>
-                    <div class="marker marker-red" style="left: 10%"></div>
-                    <div class="marker marker-yellow" style="left: 25%"></div>
+            <div id="battery" role="img" aria-label="Battery level unknown">
+                <div id="battery-body">
+                    <div id="battery-cells">
+                        <div id="battery-bars"></div>
+                        <div class="marker marker-red" style="left: 10%"></div>
+                        <div class="marker marker-yellow" style="left: 25%"></div>
+                        <span class="marker-label marker-red" style="left: 10%">10%</span>
+                        <span class="marker-label marker-yellow" style="left: 25%">25%</span>
+                    </div>
                 </div>
-                <div id="markerLabels">
-                    <span class="marker-red" style="left: 10%">10%</span>
-                    <span class="marker-yellow" style="left: 25%">25%</span>
-                </div>
+                <div id="battery-cap"></div>
             </div>
             
             <div class="input-group mb-3">
@@ -290,8 +305,23 @@
         let $sf = document.getElementById('state-form');
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
-        let elem = document.getElementById("myBar");
-        let $pct = document.getElementById("myPercent");
+        let $battery = document.getElementById('battery');
+        const BAR_COUNT = 20;
+        const $bars = document.getElementById('battery-bars');
+        for(let i = 0; i < BAR_COUNT; i++) {
+            $bars.appendChild(document.createElement('span'));
+        }
+
+        // Light bars up to the charge level; while charging, the last lit bar pulses.
+        function renderBattery(chargePercent, charging) {
+            const lit = Math.round(chargePercent / (100 / BAR_COUNT));
+            const pulseIndex = charging ? Math.max(lit - 1, 0) : -1;
+            Array.prototype.forEach.call($bars.children, (bar, i) => {
+                bar.classList.toggle('on', i < lit);
+                bar.classList.toggle('pulse', i === pulseIndex);
+            });
+            $battery.setAttribute('aria-label', 'Battery ' + fmt.format(chargePercent) + '%' + (charging ? ', charging' : ''));
+        }
 
         // Debug toggle (persisted per-browser; storage may be unavailable).
         let debug = false;
@@ -443,8 +473,7 @@
             $sf.value = state;
             $wf.value = fmt.format((current * voltage).toFixed(2));
 
-            elem.style.width = fmt.format(chargePercent) + "%";
-            $pct.textContent = fmt.format(chargePercent) + "%";
+            renderBattery(chargePercent, current > 0);
 
             $cvf.value = cellVolts.join(', ');
         }
