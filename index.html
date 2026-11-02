@@ -138,6 +138,15 @@
         .btn-primary:focus, .btn-warning:focus, .btn-secondary:focus {
             box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.4);
         }
+        #toolbar .btn {
+            min-width: 9rem;
+        }
+        .btn:disabled {
+            background-color: var(--surface-2);
+            border-color: var(--border);
+            color: var(--muted);
+            opacity: 1;
+        }
         .btn-secondary {
             background-color: var(--surface-2);
             border-color: var(--border);
@@ -185,10 +194,16 @@
         <h1>Li Time Battery Status</h1>
         <div id="last-update">Last update: waiting for data…</div>
         
-        <div id="battery-connect-container" class="container" style="padding-bottom: 20px">
-            <button id="battery-connect" class="btn btn-primary">Connect</button>
-            <div class="text-contrast">(Chrome only)</div>
-            <div id="autoconnect-note" class="small mt-1" style="color: var(--muted)"></div>
+        <div class="container">
+            <div id="toolbar" class="d-flex gap-2 mb-2">
+                <button id="battery-connect" class="btn btn-primary">Connect</button>
+                <button id="battery-toggle" class="btn btn-secondary" style="display: none">Disconnect</button>
+            </div>
+            <div id="connect-help" class="mb-3">
+                <div class="text-contrast small">(Chrome only)</div>
+                <div id="autoconnect-note" class="small mt-1" style="color: var(--muted)"></div>
+            </div>
+            <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
         </div>
         <div class="container">
             <div id="myProgress">
@@ -232,9 +247,6 @@
                 <span class="input-group-text" id="cellvolts">Cell Volts</span>
                 <input type="text" class="form-control" id="cellvolts-form" style="font-size: 0.8rem" aria-describedby="cellvolts" disabled="true">
             </div>
-            <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
-            <button id="battery-reconnect" class="btn btn-warning mb-3" style="display: none">Reconnect</button>
-            <button id="battery-disconnect" class="btn btn-secondary mb-3" style="display: none">Disconnect</button>
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
@@ -270,10 +282,9 @@
         const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
         const REPLY_TIMEOUT_MS = 5000;
 
-        let $bcc = document.getElementById('battery-connect-container');
+        let $help = document.getElementById('connect-help');
         let $bc = document.getElementById('battery-connect');
-        let $rc = document.getElementById('battery-reconnect');
-        let $dc = document.getElementById('battery-disconnect');
+        let $tg = document.getElementById('battery-toggle');
         let $lu = document.getElementById('last-update');
         let $dbg = document.getElementById('debug-toggle');
         let $tf = document.getElementById('temperatures-form');
@@ -443,6 +454,19 @@
             $cvf.value = cellVolts.join(', ');
         }
 
+        // Toolbar state. Connect (choose a battery) is disabled while connected.
+        // The second button is one control: Disconnect while connected, Reconnect afterwards.
+        let toggleMode = null;
+        function setToggle(mode) {
+            toggleMode = mode;
+            $tg.style.display = mode ? 'inline-block' : 'none';
+            $tg.disabled = mode === 'busy';
+            $tg.textContent = mode === 'disconnect' ? 'Disconnect' : mode === 'busy' ? 'Connecting…' : 'Reconnect';
+            $tg.classList.toggle('btn-secondary', mode !== 'reconnect');
+            $tg.classList.toggle('btn-primary', mode === 'reconnect');
+            $bc.disabled = mode === 'disconnect';
+        }
+
         // One session per GATT connection. Setting alive=false stops its poll loop.
         let session = null;
 
@@ -476,8 +500,7 @@
             await notifyCharacteristic.startNotifications();
 
             $msg.style.display = 'none';
-            $rc.style.display = 'none';
-            $dc.style.display = 'inline-block';
+            setToggle('disconnect');
 
             (async function() {
                 while(s.alive) {
@@ -511,14 +534,12 @@
             if(session) {
                 session.alive = false;
             }
-            $dc.style.display = 'none';
             showMessage(session && session.manual ? 'Disconnected.' : 'Battery disconnected.');
-            $rc.style.display = 'inline-block';
+            setToggle('reconnect');
         }
 
         // User-initiated disconnect: stop polling, drop the GATT connection, offer Reconnect.
-        $dc.onclick = (e) => {
-            e.preventDefault();
+        function disconnectNow() {
             if(session) {
                 session.manual = true;
             }
@@ -530,7 +551,7 @@
                 console.error(err);
             }
             onDisconnected();
-        };
+        }
 
         // Footer: deployed version (from version.js) and offline-cache status.
         let $ver = document.getElementById('version-indicator');
@@ -574,9 +595,7 @@
             batteryDevice = device;
             device.addEventListener('gattserverdisconnected', onDisconnected);
             await startSession(device);
-            if($bcc.parentNode) {
-                $bcc.parentNode.removeChild($bcc);
-            }
+            $help.style.display = 'none';
             try { localStorage.setItem(DEVICE_KEY, device.id); } catch (e) {}
         }
 
@@ -656,18 +675,19 @@
             showMessage('Auto-connect failed (' + err + '). Tap Connect.');
         });
 
-        $rc.onclick = (e) => {
+        $tg.onclick = (e) => {
             e.preventDefault();
-            if(!batteryDevice) {
-                return;
+            if(toggleMode === 'disconnect') {
+                disconnectNow();
+            } else if(toggleMode === 'reconnect' && batteryDevice) {
+                setToggle('busy');
+                showMessage('Reconnecting...');
+                startSession(batteryDevice).catch((err) => {
+                    console.error(err);
+                    showMessage(err);
+                    setToggle('reconnect');
+                });
             }
-            $rc.style.display = 'none';
-            showMessage('Reconnecting...');
-            startSession(batteryDevice).catch((err) => {
-                console.error(err);
-                showMessage(err);
-                $rc.style.display = 'inline-block';
-            });
         };
     </script>
   </body>
