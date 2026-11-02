@@ -57,12 +57,16 @@
         .timestamp {
             font-size: 0.8em;
         }
-        /* Battery graphic: 20 bars (5% each), terminal on the right, threshold ticks at 10% / 25% */
+        /* Battery graphic: 20 bars (5% each), terminal on the right. Bar colour follows the charge level:
+           red at 10% or below, yellow at 25% or below, green otherwise. */
         #battery {
             display: flex;
             align-items: center;
-            margin: 4px 0 2.2rem;
+            margin: 4px 0 1rem;
+            --bar-color: #2ecc71;
         }
+        #battery[data-level="warn"] { --bar-color: var(--accent); }
+        #battery[data-level="low"] { --bar-color: #ff3b30; }
         #battery-body {
             flex: 1;
             border: 3px solid var(--muted);
@@ -90,11 +94,11 @@
             background: var(--surface-2);
         }
         #battery-bars > span.on {
-            background: var(--accent);
+            background: var(--bar-color);
         }
         /* Charging: the last lit bar pulses slowly */
         #battery-bars > span.pulse {
-            background: var(--accent);
+            background: var(--bar-color);
             animation: bar-pulse 2.6s ease-in-out infinite;
         }
         @keyframes bar-pulse {
@@ -104,25 +108,6 @@
         @media (prefers-reduced-motion: reduce) {
             #battery-bars > span.pulse { animation: none; }
         }
-        /* Threshold lines: black outline keeps them visible over the yellow bars */
-        .marker {
-            position: absolute;
-            top: -2px;
-            bottom: -2px;
-            width: 2px;
-            margin-left: -1px;
-            box-shadow: 0 0 0 1px #000;
-        }
-        .marker-red { background-color: #ff3b30; }
-        .marker-yellow { background-color: var(--accent); }
-        .marker-label {
-            position: absolute;
-            top: calc(100% + 12px);
-            transform: translateX(-50%);
-            font-size: 0.7rem;
-        }
-        .marker-label.marker-red { background: none; color: #ff3b30; }
-        .marker-label.marker-yellow { background: none; color: var(--accent); }
         #last-update {
             text-align: center;
             font-size: 0.85rem;
@@ -221,15 +206,15 @@
                 <div id="battery-body">
                     <div id="battery-cells">
                         <div id="battery-bars"></div>
-                        <div class="marker marker-red" style="left: 10%"></div>
-                        <div class="marker marker-yellow" style="left: 25%"></div>
-                        <span class="marker-label marker-red" style="left: 10%">10%</span>
-                        <span class="marker-label marker-yellow" style="left: 25%">25%</span>
                     </div>
                 </div>
                 <div id="battery-cap"></div>
             </div>
             
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="level">Charge Level</span>
+                <input type="text" class="form-control" id="level-form" aria-describedby="level" disabled="true">
+            </div>
             <div class="input-group mb-3">
                 <span class="input-group-text" id="watts">Watts</span>
                 <input type="text" class="form-control" id="watts-form" aria-describedby="watts" disabled="true">
@@ -249,10 +234,6 @@
             <div class="input-group mb-3">
                 <span class="input-group-text" id="volt">Volt/Current</span>
                 <input type="text" class="form-control" id="volt-form" aria-describedby="volt" disabled="true">
-            </div>
-            <div class="input-group mb-3">
-                <span class="input-group-text" id="level">Charge Level</span>
-                <input type="text" class="form-control" id="level-form" aria-describedby="level" disabled="true">
             </div>
             <div class="input-group mb-3">
                 <span class="input-group-text" id="cellvolts">Cell Volts</span>
@@ -320,6 +301,7 @@
                 bar.classList.toggle('on', i < lit);
                 bar.classList.toggle('pulse', i === pulseIndex);
             });
+            $battery.dataset.level = chargePercent <= 10 ? 'low' : chargePercent <= 25 ? 'warn' : 'ok';
             $battery.setAttribute('aria-label', 'Battery ' + fmt.format(chargePercent) + '%' + (charging ? ', charging' : ''));
         }
 
