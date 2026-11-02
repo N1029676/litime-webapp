@@ -461,18 +461,19 @@
         }
 
         // Toolbar state. The second button is one control whose label is the state:
-        //   Disconnect (connected) | Reconnect (disconnected) | Connecting... | Cancel search | Chrome only.
+        //   Disconnect (connected) | Reconnect (disconnected) | Connecting... | Retry 2/3 in 3s (tap to cancel)
+        //   | Cancel search | Chrome only.
         // Connect (choose a battery) is disabled whenever it would conflict.
-        const TOGGLE_LABELS = { disconnect: 'Disconnect', reconnect: 'Reconnect', busy: 'Connecting…', search: 'Cancel search', unsupported: 'Chrome only' };
+        const TOGGLE_LABELS = { disconnect: 'Disconnect', reconnect: 'Reconnect', busy: 'Connecting…', retry: 'Retrying…', search: 'Cancel search', unsupported: 'Chrome only' };
         let toggleMode = null;
-        function setToggle(mode) {
+        function setToggle(mode, label) {
             toggleMode = mode;
             $tg.style.display = mode ? 'inline-block' : 'none';
-            $tg.textContent = TOGGLE_LABELS[mode] || '';
+            $tg.textContent = label || TOGGLE_LABELS[mode] || '';
             $tg.disabled = mode === 'busy' || mode === 'unsupported';
             $tg.classList.toggle('btn-secondary', mode !== 'reconnect');
             $tg.classList.toggle('btn-primary', mode === 'reconnect');
-            $bc.disabled = mode === 'disconnect' || mode === 'busy' || mode === 'unsupported';
+            $bc.disabled = mode === 'disconnect' || mode === 'busy' || mode === 'retry' || mode === 'unsupported';
         }
         if(!navigator.bluetooth) {
             setToggle('unsupported');
@@ -542,6 +543,9 @@
         }
 
         function onDisconnected() {
+            if(connecting) {
+                return;   // a failed attempt is handled by the retry loop in connectDevice()
+            }
             if(session) {
                 session.alive = false;
             }
@@ -602,15 +606,53 @@
         const DEVICE_KEY = 'litimeDeviceId';
         let autoWatch = null;
 
+        // Connection attempts: Android sometimes fails the first try ("NetworkError: Connection attempt
+        // failed"). Retry a few times, counting down on the shared button; tapping it cancels.
+        const MAX_ATTEMPTS = 3;
+        const RETRY_DELAY_S = 3;
+        let connecting = false;
+        let retryCancelled = false;
+        let wakeRetry = null;
+        // Sleep that the Cancel tap can cut short.
+        function retryWait(ms) {
+            return new Promise((resolve) => {
+                const t = setTimeout(resolve, ms);
+                wakeRetry = () => { clearTimeout(t); resolve(); };
+            });
+        }
+
         async function connectDevice(device) {
             batteryDevice = device;
             device.addEventListener('gattserverdisconnected', onDisconnected);
-            setToggle('busy');
+            connecting = true;
+            retryCancelled = false;
             try {
-                await startSession(device);
+                for(let attempt = 1; ; attempt++) {
+                    setToggle('busy', attempt > 1 ? 'Connecting… (' + attempt + '/' + MAX_ATTEMPTS + ')' : undefined);
+                    try {
+                        await startSession(device);
+                        break;
+                    } catch(err) {
+                        if(err.name !== 'NetworkError' || attempt >= MAX_ATTEMPTS) {
+                            throw err;
+                        }
+                        console.warn('[litime] connect attempt ' + attempt + ' failed: ' + err);
+                        showMessage(err + ' Retrying…');
+                        for(let left = RETRY_DELAY_S; left > 0 && !retryCancelled; left--) {
+                            setToggle('retry', 'Retry ' + (attempt + 1) + '/' + MAX_ATTEMPTS + ' in ' + left + 's');
+                            await retryWait(1000);
+                        }
+                        wakeRetry = null;
+                        if(retryCancelled) {
+                            throw err;
+                        }
+                    }
+                }
             } catch(err) {
                 setToggle('reconnect');
                 throw err;
+            } finally {
+                connecting = false;
             }
             try { localStorage.setItem(DEVICE_KEY, device.id); } catch (e) {}
         }
@@ -709,6 +751,12 @@
                 disconnectNow();
             } else if(toggleMode === 'search') {
                 cancelSearch();
+            } else if(toggleMode === 'retry') {
+                retryCancelled = true;
+                if(wakeRetry) {
+                    wakeRetry();
+                }
+                setToggle('reconnect');
             } else if(toggleMode === 'reconnect' && batteryDevice) {
                 showMessage('Reconnecting...');
                 connectDevice(batteryDevice).catch((err) => {
