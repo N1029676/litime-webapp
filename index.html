@@ -195,13 +195,9 @@
         <div id="last-update">Last update: waiting for data…</div>
         
         <div class="container">
-            <div id="toolbar" class="d-flex gap-2 mb-2">
+            <div id="toolbar" class="d-flex gap-2 mb-3">
                 <button id="battery-connect" class="btn btn-primary">Connect</button>
                 <button id="battery-toggle" class="btn btn-secondary" style="display: none">Disconnect</button>
-            </div>
-            <div id="connect-help" class="mb-3">
-                <div class="text-contrast small">(Chrome only)</div>
-                <div id="autoconnect-note" class="small mt-1" style="color: var(--muted)"></div>
             </div>
             <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
         </div>
@@ -282,7 +278,6 @@
         const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
         const REPLY_TIMEOUT_MS = 5000;
 
-        let $help = document.getElementById('connect-help');
         let $bc = document.getElementById('battery-connect');
         let $tg = document.getElementById('battery-toggle');
         let $lu = document.getElementById('last-update');
@@ -454,17 +449,22 @@
             $cvf.value = cellVolts.join(', ');
         }
 
-        // Toolbar state. Connect (choose a battery) is disabled while connected.
-        // The second button is one control: Disconnect while connected, Reconnect afterwards.
+        // Toolbar state. The second button is one control whose label is the state:
+        //   Disconnect (connected) | Reconnect (disconnected) | Connecting... | Cancel search | Chrome only.
+        // Connect (choose a battery) is disabled whenever it would conflict.
+        const TOGGLE_LABELS = { disconnect: 'Disconnect', reconnect: 'Reconnect', busy: 'Connecting…', search: 'Cancel search', unsupported: 'Chrome only' };
         let toggleMode = null;
         function setToggle(mode) {
             toggleMode = mode;
             $tg.style.display = mode ? 'inline-block' : 'none';
-            $tg.disabled = mode === 'busy';
-            $tg.textContent = mode === 'disconnect' ? 'Disconnect' : mode === 'busy' ? 'Connecting…' : 'Reconnect';
+            $tg.textContent = TOGGLE_LABELS[mode] || '';
+            $tg.disabled = mode === 'busy' || mode === 'unsupported';
             $tg.classList.toggle('btn-secondary', mode !== 'reconnect');
             $tg.classList.toggle('btn-primary', mode === 'reconnect');
-            $bc.disabled = mode === 'disconnect';
+            $bc.disabled = mode === 'disconnect' || mode === 'busy' || mode === 'unsupported';
+        }
+        if(!navigator.bluetooth) {
+            setToggle('unsupported');
         }
 
         // One session per GATT connection. Setting alive=false stops its poll loop.
@@ -594,17 +594,30 @@
         async function connectDevice(device) {
             batteryDevice = device;
             device.addEventListener('gattserverdisconnected', onDisconnected);
-            await startSession(device);
-            $help.style.display = 'none';
+            setToggle('busy');
+            try {
+                await startSession(device);
+            } catch(err) {
+                setToggle('reconnect');
+                throw err;
+            }
             try { localStorage.setItem(DEVICE_KEY, device.id); } catch (e) {}
+        }
+
+        function cancelSearch() {
+            if(autoWatch) {
+                autoWatch.abort();
+                autoWatch = null;
+                $msg.style.display = 'none';
+            }
+            if(toggleMode === 'search') {
+                setToggle('reconnect');
+            }
         }
 
         $bc.onclick = (e) => {
             e.preventDefault();
-            if(autoWatch) {
-                autoWatch.abort();
-                autoWatch = null;
-            }
+            cancelSearch();
 
             (async function() {
                 const device = await navigator.bluetooth.requestDevice({
@@ -621,8 +634,8 @@
         // On load: reconnect to the previously used battery without a tap. Needs getDevices()
         // (Chrome's persistent Bluetooth permissions); otherwise the Connect button is used.
         async function autoConnect() {
-            const $note = document.getElementById('autoconnect-note');
-            const note = (text) => { if($note) { $note.textContent = 'Auto-connect: ' + text; } };
+            // Reasons are written to the debug log (visible with the Debug switch).
+            const note = (text) => debugLog('Auto-connect: ' + text);
 
             let savedId = null;
             try { savedId = localStorage.getItem(DEVICE_KEY); } catch (e) {}
@@ -642,12 +655,14 @@
                 note('Chrome returned ' + devices.length + ' remembered device(s), none is a battery, so permission was not kept across reloads. Try chrome://flags/#enable-web-bluetooth-new-permissions-backend, then Connect once more.');
                 return;
             }
-            showMessage('Looking for your battery... or tap Connect to choose one.');
+            batteryDevice = device;
             if(!device.watchAdvertisements) {
                 note('watchAdvertisements() is missing, connecting directly...');
                 await connectDevice(device);
                 return;
             }
+            showMessage('Looking for your battery…');
+            setToggle('search');
             note('waiting for the battery to advertise...');
             // Wait until the battery is advertising (in range, not held by another app), then connect.
             const watch = new AbortController();
@@ -670,22 +685,24 @@
 
         autoConnect().catch((err) => {
             console.error(err);
-            const n = document.getElementById('autoconnect-note');
-            if(n) { n.textContent = 'Auto-connect failed: ' + err; }
+            debugLog('Auto-connect failed: ' + err);
             showMessage('Auto-connect failed (' + err + '). Tap Connect.');
+            if(batteryDevice) {
+                setToggle('reconnect');
+            }
         });
 
         $tg.onclick = (e) => {
             e.preventDefault();
             if(toggleMode === 'disconnect') {
                 disconnectNow();
+            } else if(toggleMode === 'search') {
+                cancelSearch();
             } else if(toggleMode === 'reconnect' && batteryDevice) {
-                setToggle('busy');
                 showMessage('Reconnecting...');
-                startSession(batteryDevice).catch((err) => {
+                connectDevice(batteryDevice).catch((err) => {
                     console.error(err);
                     showMessage(err);
-                    setToggle('reconnect');
                 });
             }
         };
