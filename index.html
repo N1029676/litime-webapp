@@ -188,6 +188,7 @@
         <div id="battery-connect-container" class="container" style="padding-bottom: 20px">
             <button id="battery-connect" class="btn btn-primary">Connect</button>
             <div class="text-contrast">(Chrome only)</div>
+            <div id="autoconnect-note" class="small mt-1" style="color: var(--muted)"></div>
         </div>
         <div class="container">
             <div id="myProgress">
@@ -601,20 +602,34 @@
         // On load: reconnect to the previously used battery without a tap. Needs getDevices()
         // (Chrome's persistent Bluetooth permissions); otherwise the Connect button is used.
         async function autoConnect() {
+            const $note = document.getElementById('autoconnect-note');
+            const note = (text) => { if($note) { $note.textContent = 'Auto-connect: ' + text; } };
+
             let savedId = null;
             try { savedId = localStorage.getItem(DEVICE_KEY); } catch (e) {}
-            if(!savedId || !navigator.bluetooth || !navigator.bluetooth.getDevices) {
+            if(!savedId) {
+                note('no saved battery yet. Connect once and it will be remembered.');
                 return;
             }
-            const device = (await navigator.bluetooth.getDevices()).find(d => d.id === savedId);
+            if(!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+                note('not available, this browser has no getDevices(). Try chrome://flags/#enable-web-bluetooth-new-permissions-backend');
+                return;
+            }
+            const devices = await navigator.bluetooth.getDevices();
+            // Prefer the saved id; otherwise accept a permitted battery by name (L-...).
+            const device = devices.find(d => d.id === savedId)
+                || devices.find(d => d.name && d.name.startsWith('L-'));
             if(!device) {
+                note('Chrome returned ' + devices.length + ' remembered device(s), none is a battery, so permission was not kept across reloads. Try chrome://flags/#enable-web-bluetooth-new-permissions-backend, then Connect once more.');
                 return;
             }
             showMessage('Looking for your battery... or tap Connect to choose one.');
             if(!device.watchAdvertisements) {
+                note('watchAdvertisements() is missing, connecting directly...');
                 await connectDevice(device);
                 return;
             }
+            note('waiting for the battery to advertise...');
             // Wait until the battery is advertising (in range, not held by another app), then connect.
             const watch = new AbortController();
             autoWatch = watch;
@@ -636,6 +651,8 @@
 
         autoConnect().catch((err) => {
             console.error(err);
+            const n = document.getElementById('autoconnect-note');
+            if(n) { n.textContent = 'Auto-connect failed: ' + err; }
             showMessage('Auto-connect failed (' + err + '). Tap Connect.');
         });
 
