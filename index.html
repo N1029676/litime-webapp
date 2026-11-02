@@ -451,7 +451,7 @@
             if(chargePercent > 100) {
                 chargePercent = 100;
             }
-            $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + ")";
+            $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + " Ah)";
             $sf.value = state;
             $wf.value = fmt.format((current * voltage).toFixed(2));
 
