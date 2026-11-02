@@ -271,6 +271,8 @@
         }
 
         const fmt = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 });
+        // Always two decimals (hundredths); signDisplay avoids showing "-0.00".
+        const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'negative' });
 
         // Highest offset read by the parser is the u16 at 64, so a valid frame needs 66 bytes.
         const MIN_FRAME_LENGTH = 66;
@@ -437,8 +439,8 @@
             let bmsTempF = bmsTempC * (9/5) + 32;
 
             // Display stats
-            $tf.value = cellTempC + "°C / " + cellTempF.toFixed(2) + "°F";
-            $btf.value = bmsTempC + "°C / " + bmsTempF.toFixed(2) + "°F";
+            $tf.value = fmt2.format(cellTempC) + "°C / " + fmt2.format(cellTempF) + "°F";
+            $btf.value = fmt2.format(bmsTempC) + "°C / " + fmt2.format(bmsTempF) + "°F";
 
             let state = '-';
             if(current > 0) {
@@ -451,19 +453,19 @@
                 state = formatDuration(Math.abs(remainingAh / current)) + " till depleted";
             }
 
-            $vf.value = voltage + ' V';
-            $cf.value = current + ' A';
+            $vf.value = fmt2.format(voltage) + ' V';
+            $cf.value = fmt2.format(current) + ' A';
             let chargePercent = (remainingAh / capacityAh) * 100;
             if(chargePercent > 100) {
                 chargePercent = 100;
             }
             $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + " Ah)";
             $sf.value = state;
-            $wf.value = fmt.format((current * voltage).toFixed(2)) + ' W';
+            $wf.value = fmt2.format(current * voltage) + ' W';
 
             renderBattery(chargePercent, current > 0);
 
-            $cvf.value = cellVolts.join(', ') + ' V';
+            $cvf.value = cellVolts.map(v => fmt2.format(v)).join(', ') + ' V';
         }
 
         // Toolbar state. The second button is one control whose label is the state:
