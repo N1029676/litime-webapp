@@ -1,0 +1,12 @@
+#!/bin/sh
+# Blocks commits that change the app but forget to stamp a new version.
+# Fix: run ./bump-version.sh, then `git add version.js sw.js`.
+# Enable once per clone: git config core.hooksPath .githooks
+staged=$(git diff --cached --name-only)
+if echo "$staged" | grep -qE '^(index\.html|manifest\.webmanifest|icon-.*\.png|vendor/)'; then
+  if ! echo "$staged" | grep -qx 'version.js'; then
+    echo "pre-commit: app files changed but version.js is not staged." >&2
+    echo "  Run ./bump-version.sh && git add version.js sw.js   (bypass: git commit --no-verify)" >&2
+    exit 1
+  fi
+fi

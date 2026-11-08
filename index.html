@@ -5,73 +5,232 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+
+    <!-- Bootstrap CSS (vendored v5.1.3, so the app works offline) -->
+    <link href="vendor/bootstrap.min.css" rel="stylesheet">
 
     <title>Li Time Battery Status</title>
     <style>
+        :root {
+            color-scheme: dark;
+            --bg: #000;
+            --surface: #1a1a1a;
+            --surface-2: #2a2a2a;
+            --border: #3d3d3d;
+            --text: #ececec;
+            --muted: #9a9a9a;
+            --accent: #ffc107;
+            --accent-hover: #ffd043;
+        }
+
         body {
-            background-color: #484848;
+            background-color: var(--bg);
+            color: var(--text);
         }
 
         h1 {
-            color: white;
+            color: var(--accent);
             text-align: center;
             font-weight: bold;
         }
 
         .text-contrast {
-            color: white;
+            color: var(--text);
         }
 
         .form-control:disabled, .form-control[readonly] {
-            background-color: #fff;
+            background-color: var(--surface);
+            color: var(--text);
+            border-color: var(--border);
             opacity: 1;
         }
         .input-group-text {
             width: 160px;
+            background-color: var(--surface-2);
+            color: var(--accent);
+            border-color: var(--border);
         }
         .timestamp {
             font-size: 0.8em;
         }
-        #myProgress {
-            background-color: white;
-            border-radius: 5px;
-            margin-bottom: 15px;
+        /* Battery graphic: 20 bars (5% each), terminal on the right. Bar colour follows the charge level:
+           red at 10% or below, yellow at 25% or below, green otherwise. */
+        #battery {
+            display: flex;
+            align-items: center;
+            margin: 4px 0 1rem;
+            --bar-color: #2ecc71;
         }
-
-        #myProgress > span {
+        #battery[data-level="warn"] { --bar-color: var(--accent); }
+        #battery[data-level="low"] { --bar-color: #ff3b30; }
+        #battery-body {
+            flex: 1;
+            border: 3px solid var(--muted);
+            border-radius: 10px;
             padding: 5px;
+            background: var(--bg);
         }
-
-        #myBar {
-            width: 0%;
-            padding: 10px;
-            background-color: #04AA6D;
-            text-align: center; /* To center it horizontally (if you want) */
-            color: white;
-            border-radius: 0px 0px 0px 5px;
+        #battery-cap {
+            width: 9px;
+            height: 38%;
+            background: var(--muted);
+            border-radius: 0 4px 4px 0;
         }
-
+        #battery-cells {
+            position: relative;
+        }
+        #battery-bars {
+            display: flex;
+            gap: 3px;
+        }
+        #battery-bars > span {
+            flex: 1;
+            height: 44px;
+            border-radius: 3px;
+            background: var(--surface-2);
+        }
+        #battery-bars > span.on {
+            background: var(--bar-color);
+        }
+        /* Charging: the last lit bar pulses slowly */
+        #battery-bars > span.pulse {
+            background: var(--bar-color);
+            animation: bar-pulse 2.6s ease-in-out infinite;
+        }
+        @keyframes bar-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.2; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #battery-bars > span.pulse { animation: none; }
+        }
+        #last-update {
+            text-align: center;
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-bottom: 12px;
+        }
+        #last-update.stale {
+            color: #ff3b30;
+        }
         a {
-            color: #03a0fd
+            color: var(--accent);
+        }
+        /* Credits & license: collapsed by default, muted */
+        #credits {
+            color: var(--muted);
+            font-size: 0.8rem;
+        }
+        #credits summary {
+            cursor: pointer;
+            user-select: none;
+        }
+        #credits a {
+            color: var(--muted);
+            text-decoration: underline;
+        }
+        #credits a:hover {
+            color: var(--text);
+        }
+        a:hover {
+            color: var(--accent-hover);
+        }
+
+        .btn-primary, .btn-warning {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: #000;
+            font-weight: 600;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-warning:hover, .btn-warning:focus {
+            background-color: var(--accent-hover);
+            border-color: var(--accent-hover);
+            color: #000;
+        }
+        .btn-primary:focus, .btn-warning:focus, .btn-secondary:focus {
+            box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.4);
+        }
+        #toolbar .btn {
+            min-width: 9rem;
+        }
+        .btn:disabled {
+            background-color: var(--surface-2);
+            border-color: var(--border);
+            color: var(--muted);
+            opacity: 1;
+        }
+        .btn-secondary {
+            background-color: var(--surface-2);
+            border-color: var(--border);
+            color: var(--text);
+        }
+        .btn-secondary:hover {
+            background-color: var(--border);
+            border-color: var(--muted);
+            color: var(--text);
+        }
+
+        .alert-primary {
+            background-color: var(--surface);
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .form-check-input {
+            background-color: var(--surface-2);
+            border-color: var(--muted);
+        }
+        .form-check-input:checked {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+        .form-check-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 0.25rem rgba(255, 193, 7, 0.4);
+        }
+        .form-switch .form-check-input:not(:checked):not(:focus) {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%239a9a9a'/%3e%3c/svg%3e");
+        }
+        .form-switch .form-check-input:checked {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23000'/%3e%3c/svg%3e");
+        }
+
+        #debug-log {
+            background: var(--surface) !important;
+            border: 1px solid var(--border);
         }
     </style>
   </head>
   <body>
     <div class="container">
         <h1>Li Time Battery Status</h1>
+        <div id="last-update">Last update: waiting for data…</div>
         
-        <div id="battery-connect-container" class="container" style="padding-bottom: 20px">
-            <button id="battery-connect" class="btn btn-primary">Connect</button>
-            <div class="text-contrast">(Chrome only)</div>
+        <div class="container">
+            <div id="toolbar" class="d-flex gap-2 mb-3">
+                <button id="battery-connect" class="btn btn-primary">Connect</button>
+                <button id="battery-toggle" class="btn btn-secondary" style="display: none">Disconnect</button>
+            </div>
+            <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
         </div>
         <div class="container">
-            <div id="myProgress">
-                <span>Charge Level</span>
-                <div id="myBar">-</div>
+            <div id="battery" role="img" aria-label="Battery level unknown">
+                <div id="battery-body">
+                    <div id="battery-cells">
+                        <div id="battery-bars"></div>
+                    </div>
+                </div>
+                <div id="battery-cap"></div>
             </div>
             
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="level">Charge Level</span>
+                <input type="text" class="form-control" id="level-form" aria-describedby="level" disabled="true">
+            </div>
             <div class="input-group mb-3">
                 <span class="input-group-text" id="watts">Watts</span>
                 <input type="text" class="form-control" id="watts-form" aria-describedby="watts" disabled="true">
@@ -89,200 +248,594 @@
                 <input type="text" class="form-control" id="bms-temp-form" aria-describedby="bmstemperatures" disabled="true">
             </div>
             <div class="input-group mb-3">
-                <span class="input-group-text" id="volt">Volt/Current</span>
+                <span class="input-group-text" id="volt">Voltage</span>
                 <input type="text" class="form-control" id="volt-form" aria-describedby="volt" disabled="true">
             </div>
             <div class="input-group mb-3">
-                <span class="input-group-text" id="level">Charge Level</span>
-                <input type="text" class="form-control" id="level-form" aria-describedby="level" disabled="true">
+                <span class="input-group-text" id="current">Current</span>
+                <input type="text" class="form-control" id="current-form" aria-describedby="current" disabled="true">
             </div>
             <div class="input-group mb-3">
                 <span class="input-group-text" id="cellvolts">Cell Volts</span>
                 <input type="text" class="form-control" id="cellvolts-form" style="font-size: 0.8rem" aria-describedby="cellvolts" disabled="true">
             </div>
-            <div class="alert alert-primary" role="alert" id="msgalert" style="display: none"></div>
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="balancing">Balancing</span>
+                <input type="text" class="form-control" id="balancing-form" aria-describedby="balancing" disabled="true">
+            </div>
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="device">Device</span>
+                <input type="text" class="form-control" id="device-form" style="font-size: 0.8rem" aria-describedby="device" disabled="true">
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
+                <label class="form-check-label text-contrast" for="debug-toggle">Debug: show raw frames, probe 0xFFE3</label>
+            </div>
+            <div id="debug-panel" class="mb-3" style="display: none">
+                <pre id="debug-frame" class="text-contrast small" style="white-space: pre-wrap; word-break: break-all; padding: 8px; border-radius: 5px; background: var(--surface); border: 1px solid var(--border)">Last frame: none yet</pre>
+                <pre id="debug-log" class="text-contrast small" style="white-space: pre-wrap; max-height: 16em; overflow: auto; padding: 8px; border-radius: 5px"></pre>
+                <button id="debug-snapshot" class="btn btn-sm btn-secondary">Snapshot frame</button>
+                <button id="debug-copy" class="btn btn-sm btn-secondary">Copy log</button>
+            </div>
 
             <div id="listContainer"></div>
         </div>
 
         <footer class="footer mt-3">
             <div class="container">
-              <span class="small text-contrast">litime-bluetooth-battery is open source and hosted on <a href="https://github.com/chadj/litime-bluetooth-battery">Github</a>.  Contributions are welcome.  <a href="https://github.com/chadj/litime-bluetooth-battery">https://github.com/chadj/litime-bluetooth-battery</a> </span><br />
-              <span class="small text-contrast">Send questions or comments to <a href="mailto:chadjamesjohnson@gmail.com">chadjamesjohnson@gmail.com</a> | <a href="https://chadj.github.io/renogy-smart-battery/">Renogy version</a></span><br />
+              <details id="credits">
+                <summary>Credits &amp; license</summary>
+                <p class="mt-2 mb-2">A fork of <a href="https://github.com/chadj/litime-bluetooth-battery">litime-bluetooth-battery</a> by Chad Johnson (chadj), extended with offline use, auto-connect, a battery graphic and more.  Fork source: <a href="https://github.com/N1029676/litime-webapp">N1029676/litime-webapp</a>.</p>
+                <p class="mb-2">MIT licensed.</p>
+              </details>
+              <span class="small text-contrast" id="version-indicator">Version: …</span>
             </div>
         </footer>
     </div>
-    <script src="./bootstrap.bundle.min.js"></script>
+    <script src="version.js"></script>
     <script>
         function timeout(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
         const fmt = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 4 });
-        let currentArray = [];
-        let statisticsArray = JSON.parse(localStorage.getItem('statisticsArray'));
-        if (!statisticsArray) {
-            statisticsArray = [];
-        }
+        // Always two decimals (hundredths); signDisplay avoids showing "-0.00".
+        const fmt2 = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: 'negative' });
 
-        let date = Date.now();
+        // Highest offset read by the parser is the u16 at 64, so a valid frame needs 66 bytes.
+        const MIN_FRAME_LENGTH = 66;
+        const SOC_OFFSET = 90;
+        // Cell balancing flag: 0 = not balancing, 1 = in progress. Matched the official app in 4 captured
+        // frames (not balancing, balancing x2, balancing complete); other values are shown as Unknown.
+        const BALANCE_OFFSET = 84;
+        let lastParsed = '';
+        // Request written to 0xFFE2 (the only characteristic this app writes to).
+        const REQUEST_GET_STATS = Uint8Array.of(0x00, 0x00, 0x04, 0x01, 0x13, 0x55, 0xAA, 0x17);
+        const REPLY_TIMEOUT_MS = 5000;
 
-        let $bcc = document.getElementById('battery-connect-container');
         let $bc = document.getElementById('battery-connect');
+        let $tg = document.getElementById('battery-toggle');
+        let $lu = document.getElementById('last-update');
+        let $dbg = document.getElementById('debug-toggle');
         let $tf = document.getElementById('temperatures-form');
         let $btf = document.getElementById('bms-temp-form');
-        // let $tfC = document.getElementById('temperaturesC-form');
         let $vf = document.getElementById('volt-form');
         let $cf = document.getElementById('current-form');
         let $lf = document.getElementById('level-form');
         let $cvf = document.getElementById('cellvolts-form');
+        let $bal = document.getElementById('balancing-form');
+        let $dev = document.getElementById('device-form');
         let $sf = document.getElementById('state-form');
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
-        let elem = document.getElementById("myBar");
-        let width = 1;
-
-        function getTimestamp (time) {
-        const pad = (n,s=2) => (`${new Array(s).fill(0)}${n}`).slice(-s);
-        const d = new Date(time);
-        
-        return `${pad(d.getFullYear(),4)}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        let $battery = document.getElementById('battery');
+        const BAR_COUNT = 20;
+        const $bars = document.getElementById('battery-bars');
+        for(let i = 0; i < BAR_COUNT; i++) {
+            $bars.appendChild(document.createElement('span'));
         }
-        
-        $bc.onclick = (e) => {
-            e.preventDefault();
-            
-            (async function() {
-                let device;
-                if(navigator.userAgent.toLowerCase().includes('bluefy')) {
-                    device = await navigator.bluetooth.requestDevice({
-                        filters: [{services: [0xFFE0]}]
-                    });
-                } else {
-                    device = await navigator.bluetooth.requestDevice({
-                        filters: [{services: [0xFFE0]}]
-                    });
+
+        // Light bars up to the charge level; while charging, the last lit bar pulses.
+        function renderBattery(chargePercent, charging) {
+            const lit = Math.round(chargePercent / (100 / BAR_COUNT));
+            const pulseIndex = charging ? Math.max(lit - 1, 0) : -1;
+            Array.prototype.forEach.call($bars.children, (bar, i) => {
+                bar.classList.toggle('on', i < lit);
+                bar.classList.toggle('pulse', i === pulseIndex);
+            });
+            $battery.dataset.level = chargePercent <= 10 ? 'low' : chargePercent <= 25 ? 'warn' : 'ok';
+            $battery.setAttribute('aria-label', 'Battery ' + fmt.format(chargePercent) + '%' + (charging ? ', charging' : ''));
+        }
+
+        // Debug toggle (persisted per-browser; storage may be unavailable).
+        let debug = false;
+        try { debug = localStorage.getItem('litimeDebug') === '1'; } catch (e) {}
+        $dbg.checked = debug;
+        let $dpanel = document.getElementById('debug-panel');
+        let $dlog = document.getElementById('debug-log');
+        let $dframe = document.getElementById('debug-frame');
+        $dpanel.style.display = debug ? 'block' : 'none';
+        $dbg.onchange = () => {
+            debug = $dbg.checked;
+            $dpanel.style.display = debug ? 'block' : 'none';
+            try { localStorage.setItem('litimeDebug', debug ? '1' : '0'); } catch (e) {}
+        };
+        // Appends the latest frame to the log, so frames from different battery states can be compared later.
+        let lastFrameHex = '';
+        document.getElementById('debug-snapshot').onclick = () => {
+            debugLog(lastFrameHex ? 'SNAPSHOT ' + lastFrameHex + ' | ' + lastParsed : 'SNAPSHOT: no frame received yet');
+        };
+        document.getElementById('debug-copy').onclick = () => {
+            if(navigator.clipboard) {
+                navigator.clipboard.writeText($dframe.textContent + '\n\n' + $dlog.textContent).catch(console.error);
+            }
+        };
+
+        // On-page debug log (last 60 lines); also mirrored to the console.
+        const debugLines = [];
+        function debugLog(text) {
+            console.log('[litime] ' + text);
+            debugLines.push(new Date().toISOString().slice(11, 23) + ' ' + text);
+            if(debugLines.length > 60) {
+                debugLines.shift();
+            }
+            $dlog.textContent = debugLines.join('\n');
+            $dlog.scrollTop = $dlog.scrollHeight;
+        }
+
+        function describeProperties(props) {
+            return ['broadcast', 'read', 'writeWithoutResponse', 'write', 'notify', 'indicate',
+                'authenticatedSignedWrites', 'reliableWrite', 'writableAuxiliaries']
+                .filter(k => props[k]).join(', ') || 'none';
+        }
+
+        // Debug-only: report characteristic properties and listen on 0xFFE3.
+        // Subscribing to notifications writes the standard CCCD descriptor of 0xFFE3 (nothing is
+        // ever written to the 0xFFE3 value). Runs from the poll loop so GATT operations never overlap.
+        async function probeFfe3(s) {
+            if(!debug || s.probed) {
+                return;
+            }
+            s.probed = true;
+            try {
+                debugLog('0xFFE1 properties: ' + describeProperties(s.notifyCharacteristic.properties));
+                debugLog('0xFFE2 properties: ' + describeProperties(s.writeCharacteristic.properties));
+                const c = await s.service.getCharacteristic(0xFFE3);
+                debugLog('0xFFE3 properties: ' + describeProperties(c.properties));
+                if(!c.properties.notify && !c.properties.indicate) {
+                    debugLog('0xFFE3 has no notify/indicate; not subscribing');
+                    return;
                 }
-                let server = await device.gatt.connect();
-
-                let service = await server.getPrimaryService(0xFFE0);
-                let rxCharacteristic = await service.getCharacteristic(0xFFE2);
-
-                let txCharacteristic = await service.getCharacteristic(0xFFE1);
-                await txCharacteristic.startNotifications();
-
-                let requestType = '';
-                txCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-                    try {
-                        const packet = event.target.value;
-                        const payload = new DataView(packet.buffer);
-
-                        let voltage = payload.getUint32(12, true) / 1000;
-                        let current = payload.getInt32(48, true) / 1000;
-                        let remianingAh = payload.getUint16(62, true) / 100;
-                        let capacityAh = payload.getUint16(64, true) / 100;
-
-                        let cellVolts = [];
-                        let offset = 16;
-                        for(let x=0; x < 16; x++) {
-                            let cellVolt = payload.getUint16(offset+x*2, true);
-                            if(cellVolt !== 0) {
-                                cellVolts.push(cellVolt / 1000);
-                            }
-                        }
-
-                        let cellTempC = payload.getInt16(52, true);
-                        let cellTempF = cellTempC * (9/5) + 32;
-                        let bmsTempC = payload.getInt16(54, true);
-                        let bmsTempF = bmsTempC * (9/5) + 32;
-
-                        // Display stats
-                        $tf.value = cellTempC + "°C / " + cellTempF.toFixed(2) + "°F";
-                        $btf.value = bmsTempC + "°C / " + bmsTempF.toFixed(2) + "°F";
-
-                        let state = '-';
-                        if(current > 0) {
-                            let duration = ((capacityAh - remianingAh) / current).toFixed(3);
-                            if(duration < 0) {
-                                duration = 0;
-                            }
-                            let hours = Math.floor(duration);
-                            let minutes = new String(Math.round((duration - hours) * 60)).padStart(2, '0');
-                            state = fmt.format(hours) + "h " + minutes + "m till charged";
-                        } else if(current < 0) {
-                            let duration = Math.abs(remianingAh / current).toFixed(3);
-                            let hours = Math.floor(duration);
-                            let minutes = new String(Math.round((duration - hours) * 60)).padStart(2, '0');
-                            state = fmt.format(hours) + "h " + minutes + "m till depleted";
-                        }
-
-                        $vf.value = voltage + ' / ' + current;
-                        let chargePercent = (remianingAh / capacityAh) * 100;
-                        if(chargePercent > 100) {
-                            chargePercent = 100;
-                        }
-                        $lf.value = fmt.format(chargePercent) + "% (" + remianingAh + "/" + capacityAh + ")";
-                        $sf.value = state;
-                        $wf.value = fmt.format((current * voltage).toFixed(2));
-
-                        elem.style.width = fmt.format(chargePercent) + "%";
-                        elem.innerHTML = fmt.format(chargePercent) + "%";
-
-                        $cvf.value = cellVolts.join(', ');
-                    } catch (error) {
-                        console.error(error);
+                c.addEventListener('characteristicvaluechanged', (event) => {
+                    const v = event.target.value;
+                    if(debug) {
+                        debugLog('0xFFE3 notification ' + v.byteLength + ' bytes: ' + toHex(v));
                     }
-
-                    requestType = '';
                 });
+                await c.startNotifications();
+                debugLog('0xFFE3 subscribed, listening');
+            } catch(err) {
+                debugLog('0xFFE3 probe failed: ' + err);
+            }
+        }
 
-                let requestReady = async function() {
-                    while(true) {
-                        if(requestType === '') {
+        function toHex(dataView) {
+            return Array.from(new Uint8Array(dataView.buffer, dataView.byteOffset, dataView.byteLength))
+                .map(b => b.toString(16).padStart(2, '0').toUpperCase())
+                .join(' ');
+        }
+
+        function showMessage(text) {
+            $msg.style.display = 'block';
+            $msg.textContent = text;
+        }
+
+        function formatDuration(hoursFloat) {
+            let hours = Math.floor(hoursFloat);
+            let minutes = String(Math.round((hoursFloat - hours) * 60)).padStart(2, '0');
+            return fmt.format(hours) + "h " + minutes + "m";
+        }
+
+        // "Last update" indicator: time of the last valid frame, refreshed every second.
+        const STALE_AFTER_MS = 10000;
+        let lastFrameAt = null;
+        function formatAge(ms) {
+            let sec = Math.max(0, Math.round(ms / 1000));
+            if(sec < 60) {
+                return sec + 's ago';
+            }
+            if(sec < 3600) {
+                return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's ago';
+            }
+            return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm ago';
+        }
+        function updateAge() {
+            if(lastFrameAt === null) {
+                return;
+            }
+            let age = Date.now() - lastFrameAt;
+            $lu.textContent = 'Last update: ' + new Date(lastFrameAt).toLocaleTimeString() + ' (' + formatAge(age) + ')';
+            $lu.classList.toggle('stale', age > STALE_AFTER_MS);
+        }
+        setInterval(updateAge, 1000);
+
+        function renderFrame(payload) {
+            let voltage = payload.getUint32(12, true) / 1000;
+            let current = payload.getInt32(48, true) / 1000;
+            let remainingAh = payload.getUint16(62, true) / 100;
+            let capacityAh = payload.getUint16(64, true) / 100;
+
+            // The BMS reports its own state of charge (whole %) at byte 90; the official app uses it
+            // (e.g. 99% -> 49.5 Ah of 50). The Ah counter at byte 62 can run past the nominal capacity
+            // (50.93 Ah seen at "99%"), which previously showed 100% and "0h 00m". Fall back to the
+            // counter if the frame is too short or the value is not a sane percentage.
+            const counterAh = remainingAh;
+            const soc = payload.byteLength >= SOC_OFFSET + 2 ? payload.getUint16(SOC_OFFSET, true) : null;
+            let chargePercent;
+            if(soc !== null && soc <= 100) {
+                chargePercent = soc;
+                remainingAh = Math.round(soc * capacityAh) / 100;
+            } else {
+                chargePercent = Math.min((remainingAh / capacityAh) * 100, 100);
+            }
+            lastParsed = 'SOC@' + SOC_OFFSET + '=' + soc + '%, Ah counter@62=' + counterAh + ', capacity@64=' + capacityAh + ', used=' + fmt.format(chargePercent) + '%';
+
+            let cellVolts = [];
+            let offset = 16;
+            for(let x=0; x < 16; x++) {
+                let cellVolt = payload.getUint16(offset+x*2, true);
+                if(cellVolt !== 0) {
+                    cellVolts.push(cellVolt / 1000);
+                }
+            }
+
+            let cellTempC = payload.getInt16(52, true);
+            let cellTempF = cellTempC * (9/5) + 32;
+            let bmsTempC = payload.getInt16(54, true);
+            let bmsTempF = bmsTempC * (9/5) + 32;
+
+            // Display stats
+            $tf.value = fmt2.format(cellTempC) + "°C / " + fmt2.format(cellTempF) + "°F";
+            $btf.value = fmt2.format(bmsTempC) + "°C / " + fmt2.format(bmsTempF) + "°F";
+
+            let state = '-';
+            if(current > 0) {
+                let duration = (capacityAh - remainingAh) / current;
+                if(duration < 0) {
+                    duration = 0;
+                }
+                state = formatDuration(duration) + " till charged";
+            } else if(current < 0) {
+                state = formatDuration(Math.abs(remainingAh / current)) + " till depleted";
+            }
+
+            $vf.value = fmt2.format(voltage) + ' V';
+            $cf.value = fmt2.format(current) + ' A';
+            $lf.value = fmt.format(chargePercent) + "% (" + remainingAh + "/" + capacityAh + " Ah)";
+            $sf.value = state;
+            $wf.value = fmt2.format(current * voltage) + ' W';
+
+            renderBattery(chargePercent, current > 0);
+
+            $cvf.value = cellVolts.map(v => fmt2.format(v)).join(', ') + ' V';
+
+            const balanceFlag = payload.byteLength > BALANCE_OFFSET ? payload.getUint8(BALANCE_OFFSET) : null;
+            $bal.value = balanceFlag === 1 ? 'In progress' : balanceFlag === 0 ? 'Not balancing' : balanceFlag === null ? '-' : 'Unknown (' + balanceFlag + ')';
+            lastParsed += ', balance@' + BALANCE_OFFSET + '=' + balanceFlag;
+        }
+
+        // Toolbar state. The second button is one control whose label is the state:
+        //   Disconnect (connected) | Reconnect (disconnected) | Connecting... | Retry 2/3 in 3s (tap to cancel)
+        //   | Cancel search | Chrome only.
+        // Connect (choose a battery) is disabled whenever it would conflict.
+        const TOGGLE_LABELS = { disconnect: 'Disconnect', reconnect: 'Reconnect', busy: 'Connecting…', retry: 'Retrying…', search: 'Cancel search', unsupported: 'Chrome only' };
+        let toggleMode = null;
+        function setToggle(mode, label) {
+            toggleMode = mode;
+            $tg.style.display = mode ? 'inline-block' : 'none';
+            $tg.textContent = label || TOGGLE_LABELS[mode] || '';
+            $tg.disabled = mode === 'busy' || mode === 'unsupported';
+            $tg.classList.toggle('btn-secondary', mode !== 'reconnect');
+            $tg.classList.toggle('btn-primary', mode === 'reconnect');
+            $bc.disabled = mode === 'disconnect' || mode === 'busy' || mode === 'retry' || mode === 'unsupported';
+        }
+        if(!navigator.bluetooth) {
+            setToggle('unsupported');
+        }
+
+        // One session per GATT connection. Setting alive=false stops its poll loop.
+        let session = null;
+
+        async function startSession(device) {
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(0xFFE0);
+            const writeCharacteristic = await service.getCharacteristic(0xFFE2);
+            const notifyCharacteristic = await service.getCharacteristic(0xFFE1);
+
+            const s = { alive: true, waiting: false, probed: false, service, writeCharacteristic, notifyCharacteristic };
+            session = s;
+
+            notifyCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                s.waiting = false;
+                const packet = event.target.value;
+                if(debug) {
+                    console.log('[litime] notification ' + packet.byteLength + ' bytes: ' + toHex(packet));
+                }
+                if(packet.byteLength < MIN_FRAME_LENGTH) {
+                    console.warn('[litime] skipping short frame (' + packet.byteLength + ' < ' + MIN_FRAME_LENGTH + ' bytes)');
+                    return;
+                }
+                try {
+                    renderFrame(packet);
+                    if(debug) {
+                        lastFrameHex = toHex(packet);
+                        $dframe.textContent = 'Last frame (' + packet.byteLength + ' bytes, ' + new Date().toLocaleTimeString() + '):\n' + toHex(packet) + '\n' + lastParsed;
+                    }
+                    lastFrameAt = Date.now();
+                    updateAge();
+                } catch (error) {
+                    console.error(error);
+                }
+            });
+            await notifyCharacteristic.startNotifications();
+
+            $msg.style.display = 'none';
+            setToggle('disconnect');
+
+            (async function() {
+                while(s.alive) {
+                    try {
+                        await probeFfe3(s);
+                        s.waiting = true;
+                        if(writeCharacteristic.writeValueWithResponse) {
+                            await writeCharacteristic.writeValueWithResponse(REQUEST_GET_STATS);
+                        } else {
+                            await writeCharacteristic.writeValue(REQUEST_GET_STATS);
+                        }
+                        const deadline = Date.now() + REPLY_TIMEOUT_MS;
+                        while(s.alive && s.waiting && Date.now() < deadline) {
+                            await timeout(250);
+                        }
+                    } catch(err) {
+                        if(!s.alive) {
                             break;
                         }
-                        await timeout(250);
-                    }
-                };
-
-                let getStats = async function () {
-                    const buffer = new ArrayBuffer(8);
-                    const view = new DataView(buffer);
-                    view.setUint16(0, 0x0000);
-                    view.setUint16(2, 0x0401);
-                    view.setUint16(4, 0x1355);
-                    view.setUint16(6, 0xAA17);
-
-                    requestType = 'getStats';
-                    if(rxCharacteristic.writeValueWithResponse) {
-                        await rxCharacteristic.writeValueWithResponse(buffer);
-                    } else {
-                        await rxCharacteristic.writeValue(buffer);
-                    }
-                };
-
-                $bcc.parentNode.removeChild($bcc);
-                $msg.style.display = 'none';
-
-                while(true) {
-                    try {
-                        //console.log('Starting battery read');
-                        await getStats();
-                        await requestReady();
-                    } catch(err) {
                         console.error(err);
-                        $msg.style.display = 'block';
-                        $msg.innerHTML = err;
+                        showMessage(err);
                     }
+                    s.waiting = false;
 
                     await timeout(3000);
                 }
+            })();
+        }
 
+        function onDisconnected() {
+            if(connecting) {
+                return;   // a failed attempt is handled by the retry loop in connectDevice()
+            }
+            if(session) {
+                session.alive = false;
+            }
+            showMessage(session && session.manual ? 'Disconnected.' : 'Battery disconnected.');
+            setToggle('reconnect');
+        }
+
+        // User-initiated disconnect: stop polling, drop the GATT connection, offer Reconnect.
+        function disconnectNow() {
+            if(session) {
+                session.manual = true;
+            }
+            try {
+                if(batteryDevice && batteryDevice.gatt.connected) {
+                    batteryDevice.gatt.disconnect();
+                }
+            } catch(err) {
+                console.error(err);
+            }
+            onDisconnected();
+        }
+
+        // Footer: deployed version (from version.js) and offline-cache status.
+        let $ver = document.getElementById('version-indicator');
+        let offlineStatus = 'offline cache not available';
+        function renderVersion() {
+            let when = new Date(APP_VERSION);
+            let stamp = isNaN(when) ? APP_VERSION : when.toLocaleString();
+            $ver.textContent = 'Version: ' + stamp + ' | ' + offlineStatus;
+        }
+        renderVersion();
+
+        if('serviceWorker' in navigator) {
+            offlineStatus = 'preparing offline cache…';
+            renderVersion();
+            let hadController = !!navigator.serviceWorker.controller;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if(hadController) {
+                    offlineStatus = 'new version installed, reload to use it';
+                    renderVersion();
+                }
+                hadController = true;
+            });
+            navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(() => navigator.serviceWorker.ready).then(() => {
+                if(!offlineStatus.startsWith('new version')) {
+                    offlineStatus = 'ready for offline use';
+                    renderVersion();
+                }
+            }).catch((err) => {
+                console.error(err);
+                offlineStatus = 'offline cache failed';
+                renderVersion();
+            });
+        }
+
+        let batteryDevice = null;
+        // Opaque, per-origin Web Bluetooth id of the last battery we connected to (not the MAC address).
+        const DEVICE_KEY = 'litimeDeviceId';
+        let autoWatch = null;
+
+        // Connection attempts: Android sometimes fails the first try ("NetworkError: Connection attempt
+        // failed"). Retry a few times, counting down on the shared button; tapping it cancels.
+        const MAX_ATTEMPTS = 3;
+        const RETRY_DELAY_S = 3;
+        let connecting = false;
+        let retryCancelled = false;
+        let wakeRetry = null;
+        // Sleep that the Cancel tap can cut short.
+        function retryWait(ms) {
+            return new Promise((resolve) => {
+                const t = setTimeout(resolve, ms);
+                wakeRetry = () => { clearTimeout(t); resolve(); };
+            });
+        }
+
+        async function connectDevice(device) {
+            batteryDevice = device;
+            // Bluetooth name as advertised (the official app shows it as the battery's title).
+            // Shown on the page only; never stored or sent anywhere.
+            $dev.value = device.name || '-';
+            device.addEventListener('gattserverdisconnected', onDisconnected);
+            connecting = true;
+            retryCancelled = false;
+            try {
+                for(let attempt = 1; ; attempt++) {
+                    setToggle('busy', attempt > 1 ? 'Connecting… (' + attempt + '/' + MAX_ATTEMPTS + ')' : undefined);
+                    try {
+                        await startSession(device);
+                        break;
+                    } catch(err) {
+                        if(err.name !== 'NetworkError' || attempt >= MAX_ATTEMPTS) {
+                            throw err;
+                        }
+                        console.warn('[litime] connect attempt ' + attempt + ' failed: ' + err);
+                        showMessage(err + ' Retrying…');
+                        for(let left = RETRY_DELAY_S; left > 0 && !retryCancelled; left--) {
+                            setToggle('retry', 'Retry ' + (attempt + 1) + '/' + MAX_ATTEMPTS + ' in ' + left + 's');
+                            await retryWait(1000);
+                        }
+                        wakeRetry = null;
+                        if(retryCancelled) {
+                            throw err;
+                        }
+                    }
+                }
+            } catch(err) {
+                setToggle('reconnect');
+                throw err;
+            } finally {
+                connecting = false;
+            }
+            try { localStorage.setItem(DEVICE_KEY, device.id); } catch (e) {}
+        }
+
+        function cancelSearch() {
+            if(autoWatch) {
+                autoWatch.abort();
+                autoWatch = null;
+                $msg.style.display = 'none';
+            }
+            if(toggleMode === 'search') {
+                setToggle('reconnect');
+            }
+        }
+
+        $bc.onclick = (e) => {
+            e.preventDefault();
+            cancelSearch();
+
+            (async function() {
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'L-' }],
+                    optionalServices: [0xFFE0]
+                });
+                await connectDevice(device);
             })().catch((err) => {
                 console.error(err);
-                $msg.style.display = 'block';
-                $msg.innerHTML = err;
+                showMessage(err);
             });
+        };
+
+        // On load: reconnect to the previously used battery without a tap. Needs getDevices()
+        // (Chrome's persistent Bluetooth permissions); otherwise the Connect button is used.
+        async function autoConnect() {
+            // Reasons are written to the debug log (visible with the Debug switch).
+            const note = (text) => debugLog('Auto-connect: ' + text);
+
+            let savedId = null;
+            try { savedId = localStorage.getItem(DEVICE_KEY); } catch (e) {}
+            if(!savedId) {
+                note('no saved battery yet. Connect once and it will be remembered.');
+                return;
+            }
+            if(!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+                note('not available, this browser has no getDevices(). Try chrome://flags/#enable-web-bluetooth-new-permissions-backend');
+                return;
+            }
+            const devices = await navigator.bluetooth.getDevices();
+            // Prefer the saved id; otherwise accept a permitted battery by name (L-...).
+            const device = devices.find(d => d.id === savedId)
+                || devices.find(d => d.name && d.name.startsWith('L-'));
+            if(!device) {
+                note('Chrome returned ' + devices.length + ' remembered device(s), none is a battery, so permission was not kept across reloads. Try chrome://flags/#enable-web-bluetooth-new-permissions-backend, then Connect once more.');
+                return;
+            }
+            batteryDevice = device;
+            if(!device.watchAdvertisements) {
+                note('watchAdvertisements() is missing, connecting directly...');
+                await connectDevice(device);
+                return;
+            }
+            showMessage('Looking for your battery…');
+            setToggle('search');
+            note('waiting for the battery to advertise...');
+            // Wait until the battery is advertising (in range, not held by another app), then connect.
+            const watch = new AbortController();
+            autoWatch = watch;
+            device.addEventListener('advertisementreceived', async () => {
+                if(watch.signal.aborted || (session && session.alive)) {
+                    return;
+                }
+                watch.abort();
+                autoWatch = null;
+                try {
+                    await connectDevice(device);
+                } catch(err) {
+                    console.error(err);
+                    showMessage(err);
+                }
+            });
+            await device.watchAdvertisements({ signal: watch.signal });
+        }
+
+        autoConnect().catch((err) => {
+            console.error(err);
+            debugLog('Auto-connect failed: ' + err);
+            showMessage('Auto-connect failed (' + err + '). Tap Connect.');
+            if(batteryDevice) {
+                setToggle('reconnect');
+            }
+        });
+
+        $tg.onclick = (e) => {
+            e.preventDefault();
+            if(toggleMode === 'disconnect') {
+                disconnectNow();
+            } else if(toggleMode === 'search') {
+                cancelSearch();
+            } else if(toggleMode === 'retry') {
+                retryCancelled = true;
+                if(wakeRetry) {
+                    wakeRetry();
+                }
+                setToggle('reconnect');
+            } else if(toggleMode === 'reconnect' && batteryDevice) {
+                showMessage('Reconnecting...');
+                connectDevice(batteryDevice).catch((err) => {
+                    console.error(err);
+                    showMessage(err);
+                });
+            }
         };
     </script>
   </body>
