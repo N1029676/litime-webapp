@@ -263,6 +263,10 @@
                 <span class="input-group-text" id="balancing">Balancing</span>
                 <input type="text" class="form-control" id="balancing-form" aria-describedby="balancing" disabled="true">
             </div>
+            <div class="input-group mb-3">
+                <span class="input-group-text" id="device">Device</span>
+                <input type="text" class="form-control" id="device-form" style="font-size: 0.8rem" aria-describedby="device" disabled="true">
+            </div>
 
             <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" role="switch" id="debug-toggle">
@@ -321,6 +325,7 @@
         let $lf = document.getElementById('level-form');
         let $cvf = document.getElementById('cellvolts-form');
         let $bal = document.getElementById('balancing-form');
+        let $dev = document.getElementById('device-form');
         let $sf = document.getElementById('state-form');
         let $wf = document.getElementById('watts-form');
         let $msg = document.getElementById('msgalert');
@@ -687,6 +692,9 @@
 
         async function connectDevice(device) {
             batteryDevice = device;
+            // Bluetooth name as advertised (the official app shows it as the battery's title).
+            // Shown on the page only; never stored or sent anywhere.
+            $dev.value = device.name || '-';
             device.addEventListener('gattserverdisconnected', onDisconnected);
             connecting = true;
             retryCancelled = false;

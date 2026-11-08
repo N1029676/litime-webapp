@@ -13,7 +13,7 @@ Works in Chrome on Android and desktop (and Chromium derivatives). On Apple devi
 **Display**
 - **Battery graphic** at the top: 20 bars (5% each). Bars are red at 10% or below, yellow at 25% or below, green above. While charging, the last lit bar pulses slowly (disabled if the device asks for reduced motion).
 - **Last update** line with the time of the last valid frame and its age; turns red after 10 s without data.
-- **Rows:** Charge Level (`99% (49.5/50 Ah)`), Watts, Charge State (time till charged / depleted), Battery Temp and BMS Temp (°C / °F), Voltage, Current (positive = charging), Cell Volts, Balancing (In progress / Not balancing). Values show units and two decimals.
+- **Rows:** Charge Level (`99% (49.5/50 Ah)`), Watts, Charge State (time till charged / depleted), Battery Temp and BMS Temp (°C / °F), Voltage, Current (positive = charging), Cell Volts, Balancing (In progress / Not balancing), Device (the battery's Bluetooth name as reported by Chrome; shown on the page only, never stored). Values show units and two decimals.
 - Dark theme (black, grey, yellow).
 
 **Connecting**
@@ -102,7 +102,7 @@ Bytes whose value changed between captures, compared with what the official app 
 
 Byte 84 and byte 72 both follow the official app's balancing state in these captures; the app uses byte 84. "Not balancing" can't distinguish "complete" from "not needed". Serial number, firmware versions and the rated capacity are not in this reply; the official app must get them with other commands (see below).
 
-Not in this reply: serial number, firmware versions (BMS and Bluetooth). Other requests use other command bytes (the reply command is the request command with the top bit set); capture the official app's Bluetooth traffic (Android HCI snoop log) to find them. Use the debug **Snapshot frame** button to capture more frames.
+Not in this reply: serial number, model, firmware versions (BMS and Bluetooth). The only identifier we get is the Bluetooth name, which the app shows in the Device row. Other requests use other command bytes (the reply command is the request command with the top bit set); capture the official app's Bluetooth traffic (Android HCI snoop log) to find them. Use the debug **Snapshot frame** button to capture more frames.
 
 ## Development
 
